@@ -5,4 +5,5 @@ dist/
 *.egg-info/
 .env
 .claude/
-demo/*.gif
+demo/frames/
+demo/hero-frames/
