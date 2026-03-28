@@ -30,5 +30,16 @@ except Exception:
 " 2>/dev/null
 fi
 
-# That's it — the actual panel update is handled by a background agent
-# spawned by main Claude. This hook just provides instant visual feedback.
+# ── Run status curator (LLM-powered, updates status screen only) ──
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+VENV="$PLUGIN_ROOT/.venv/bin/python3"
+INPUT=$(cat)
+
+if [ ! -f "$VENV" ]; then
+    echo "$INPUT" | uv run --directory "$PLUGIN_ROOT" python -m claude_panel.curator \
+        >> "$HOME/.claude-panel/curator.log" 2>&1
+else
+    echo "$INPUT" | PYTHONPATH="$PLUGIN_ROOT/src" "$VENV" -m claude_panel.curator \
+        >> "$HOME/.claude-panel/curator.log" 2>&1
+fi
