@@ -366,12 +366,15 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
 
         updates = json.loads(text)
 
-        # Apply status updates (skip nulls)
+        # Apply status updates (skip nulls, ensure strings)
         changed = False
         for field in ("task", "files", "decisions"):
             value = updates.get(field)
             if value is not None:
-                state = update_status_section(state, field, value)
+                # LLM sometimes returns lists instead of strings
+                if isinstance(value, list):
+                    value = "\n".join(f"- {v}" if not v.startswith("-") else v for v in value)
+                state = update_status_section(state, field, str(value))
                 changed = True
 
         # Apply mood/emoji update — but only if main Claude hasn't pushed
