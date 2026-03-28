@@ -21,62 +21,73 @@ STANDARD_ORDER = ["main", "status", "ambient"]
 mcp = FastMCP(
     "claude-panel",
     instructions="""\
-You manage a persistent side panel with three standard screens:
+You manage a persistent side panel with three screens: main, status, ambient.
+
+## How to update the panel (IMPORTANT)
+
+To keep the conversation clean, update the panel via a **background Haiku agent**. \
+This is invisible to the user — zero noise in the chat.
+
+```python
+Agent(
+    description="Update panel",
+    mode="dontAsk",
+    model="haiku",
+    run_in_background=True,
+    prompt=\"\"\"Run this bash command:
+cd /Users/aradaev/Desktop/Projects/claude-panel && uv run python3 -c "
+from claude_panel.curator import read_state, write_state, update_main, update_status_section, set_active
+state = read_state()
+state = update_main(state, [
+    {'id': 'SECTION_ID', 'title': 'SECTION_TITLE', 'content': 'MARKDOWN_CONTENT'},
+])
+state = update_status_section(state, 'task', 'CURRENT_TASK')
+state = update_status_section(state, 'files', 'FILES_CHANGED')
+state = update_status_section(state, 'decisions', 'DECISIONS_MADE')
+state = set_active(state, 'main')
+write_state(state)
+print('Done')
+"\"\"\"
+)
+```
+
+Fill in the sections/content with whatever is relevant RIGHT NOW. \
+Use this pattern whenever you want to show context, progress, explanations, or diagrams.
+
+## When to update
+
+- **Starting a task** — show goal, approach, key files on main
+- **Making progress** — update main with checklist, update status files/decisions
+- **Explaining something** — diagrams, architecture, data structures on main
+- **After editing files** — update status files section
+- **Making a decision** — update status decisions section
+- **Idle / done** — `panel(show="ambient")`
+- **Don't update every message** — only when context meaningfully changed
+
+## Direct panel() calls (for quick commands only)
+
+Use the panel() tool directly for one-liners that don't need a background agent:
+- `panel(show="ambient")` — switch to screensaver
+- `panel(show="main")` — switch to main
+- `panel(screensaver="rain-city")` — change screensaver
+
+## For fetching external content
+
+Spawn a background **Sonnet** agent when the user asks for docs, web content, etc:
+```python
+Agent(
+    description="Fetch docs for panel",
+    mode="dontAsk",
+    run_in_background=True,
+    prompt="Fetch [URL/topic], extract key content, write to panel state..."
+)
+```
 
 ## Screens
 
-1. **main** — Your free-form canvas. Show whatever is most relevant right now: \
-a plan, progress, explanation, debug context. Replace the content freely as focus shifts.
-   **Preferred:** Write markdown to `~/.claude-panel/content/main.md`, then:
-   ```python
-   panel(file="main.md")  # tiny call, content stays in the file
-   ```
-   Use `## Headings` in the markdown — each becomes a panel section.
-   Alternative (inline): `panel(sections=[{"id": "goal", "title": "Goal", "content": "..."}])`
-
-2. **status** — Structured session dashboard. Always shows: current task, files \
-changed, and decisions made. Update individual sections incrementally as you work:
-   ```python
-   panel(screen="status", section="task", content="Implementing multi-screen panel")
-   panel(screen="status", section="files", content="- server.py — multi-screen API\\n- viewer.py — screen bar")
-   panel(screen="status", section="decisions", content="- Chose 3-screen model: main + status + ambient")
-   ```
-
-3. **ambient** — The user's screensaver. Show when idle:
-   ```python
-   panel(show="ambient")
-   ```
-
-## Workflow
-
-1. At session start, set up ambient: `panel(screensaver="tokyo-drift")`
-2. Initialize status sections: task, files, decisions
-3. Use `panel(sections=[...])` freely to show context on main — this auto-shows main
-4. Update status incrementally as you edit files, make decisions
-5. Switch to ambient when idle: `panel(show="ambient")`
-
-## When to update main
-
-| Situation              | Content                                                |
-|-----------------------|--------------------------------------------------------|
-| Starting a task       | Goal, approach, key files                               |
-| Making progress       | Checklist with [x] items                                |
-| Explaining something  | Diagrams, architecture, data structures                 |
-| Debugging             | Hypothesis, evidence, stack traces                      |
-| Idle / done           | `panel(show="ambient")`                                 |
-
-## When to update status
-
-- **task**: When starting or switching tasks
-- **files**: After editing a file (append the filename + what changed)
-- **decisions**: After making a non-obvious choice (what + why)
-
-## Behavior
-- **For main:** Write to `~/.claude-panel/content/main.md` then `panel(file="main.md")` — keeps conversation clean
-- **For status:** `panel(screen="status", section=ID, content=TEXT)` — short incremental updates
-- Don't update every message — only when context meaningfully changed
-- Keep content short and scannable
-- User can arrow-key browse between screens
+1. **main** — Free-form canvas. Plans, progress, diagrams, explanations.
+2. **status** — Structured dashboard: task, files changed, decisions.
+3. **ambient** — Screensaver. User can arrow-key browse between screens.
 """,
 )
 
