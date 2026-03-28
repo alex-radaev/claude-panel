@@ -1,0 +1,17 @@
+[project]
+name = "claude-panel"
+version = "0.1.0"
+description = "Persistent context panel for Claude Code — MCP server + Textual TUI viewer"
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp>=2.0.0",
+    "textual>=3.0.0",
+]
+
+[project.scripts]
+claude-panel-server = "claude_panel.server:main"
+claude-panel = "claude_panel.viewer:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
