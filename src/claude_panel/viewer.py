@@ -124,6 +124,8 @@ class PanelViewer(App):
         ("right", "next_screen", "Next"),
     ]
 
+    SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
     last_ts: reactive[float] = reactive(0.0)
     current_mode: reactive[str] = reactive("waiting")
     _canvas_counter: int = 0
@@ -134,6 +136,11 @@ class PanelViewer(App):
     _screen_order: list[str] = []
     _active_screen: str | None = None
 
+    # Loading spinner state
+    _loading: bool = False
+    _loading_message: str = "Updating..."
+    _spinner_idx: int = 0
+
     def compose(self) -> ComposeResult:
         yield Header()
         yield VerticalScroll(WaitingMessage(), id="content-area")
@@ -141,6 +148,7 @@ class PanelViewer(App):
 
     def on_mount(self) -> None:
         self.set_interval(POLL_INTERVAL, self._poll_state)
+        self.set_interval(0.1, self._animate_spinner)
 
     async def _poll_state(self) -> None:
         """Check the state file for updates."""
@@ -178,21 +186,30 @@ class PanelViewer(App):
             elif mode == "waiting":
                 await self._show_waiting()
 
-            # Update status bar
-            loading = data.get("loading", False)
-            loading_msg = data.get("loading_message", "Updating...")
-            elapsed = time.time() - ts
-            if loading:
-                self.query_one("#status-bar", Static).update(
-                    Text.from_markup(f"[bold bright_yellow]⟳ {loading_msg}[/]")
-                )
-            elif elapsed < 60:
-                self.query_one("#status-bar", Static).update(f"Last updated: {elapsed:.0f}s ago")
-            else:
-                self.query_one("#status-bar", Static).update(f"Last updated: {elapsed / 60:.0f}m ago")
+            # Update loading state
+            self._loading = data.get("loading", False)
+            self._loading_message = data.get("loading_message", "Updating...")
+
+            # Update status bar (only if not loading — spinner handles that)
+            if not self._loading:
+                elapsed = time.time() - ts
+                if elapsed < 60:
+                    self.query_one("#status-bar", Static).update(f"Last updated: {elapsed:.0f}s ago")
+                else:
+                    self.query_one("#status-bar", Static).update(f"Last updated: {elapsed / 60:.0f}m ago")
 
         except (json.JSONDecodeError, KeyError, OSError):
             pass
+
+    async def _animate_spinner(self) -> None:
+        """Animate the loading spinner in the status bar."""
+        if not self._loading:
+            return
+        frame = self.SPINNER_FRAMES[self._spinner_idx % len(self.SPINNER_FRAMES)]
+        self._spinner_idx += 1
+        self.query_one("#status-bar", Static).update(
+            Text.from_markup(f"[bold bright_yellow]{frame} {self._loading_message}[/]")
+        )
 
     async def _handle_multi_screen(self, data: dict[str, Any]) -> None:
         """Handle multi-screen mode — render the active screen."""
