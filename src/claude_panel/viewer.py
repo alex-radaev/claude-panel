@@ -179,12 +179,17 @@ class PanelViewer(App):
                 await self._show_waiting()
 
             # Update status bar
+            loading = data.get("loading", False)
+            loading_msg = data.get("loading_message", "Updating...")
             elapsed = time.time() - ts
-            if elapsed < 60:
-                ago = f"{elapsed:.0f}s ago"
+            if loading:
+                self.query_one("#status-bar", Static).update(
+                    Text.from_markup(f"[bold bright_yellow]⟳ {loading_msg}[/]")
+                )
+            elif elapsed < 60:
+                self.query_one("#status-bar", Static).update(f"Last updated: {elapsed:.0f}s ago")
             else:
-                ago = f"{elapsed / 60:.0f}m ago"
-            self.query_one("#status-bar", Static).update(f"Last updated: {ago}")
+                self.query_one("#status-bar", Static).update(f"Last updated: {elapsed / 60:.0f}m ago")
 
         except (json.JSONDecodeError, KeyError, OSError):
             pass

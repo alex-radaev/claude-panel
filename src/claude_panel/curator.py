@@ -203,6 +203,8 @@ def format_current_state(state: dict[str, Any]) -> str:
 def write_state_atomic(state: dict[str, Any]) -> None:
     """Atomically write state to the shared JSON file."""
     PANEL_DIR.mkdir(parents=True, exist_ok=True)
+    state.pop("loading", None)
+    state.pop("loading_message", None)
     state["ts"] = time.time()
 
     fd, tmp_path = tempfile.mkstemp(dir=str(PANEL_DIR), suffix=".tmp")
