@@ -11,7 +11,7 @@
   <a href="https://github.com/alex-radaev/claude-panel/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/alex-radaev/claude-panel"></a>
 </p>
 
-<p align="center"><img src="demo/hero.gif" alt="Panel cycling through main, status, and ambient screens" width="400"></p>
+<p align="center"><img src="demo/hero.gif" alt="Panel cycling through main, status, and ambient screens" width="900"></p>
 <p align="center"><em>Main screen (Claude's content) → Status dashboard → Ambient screensaver</em></p>
 
 ---
