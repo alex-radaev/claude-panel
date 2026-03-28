@@ -1,123 +1,154 @@
-# Claude Panel
+<p align="center">
+  <h1 align="center">Claude Panel</h1>
+  <p align="center">
+    A real-time context dashboard and ambient screensaver for Claude Code
+  </p>
+</p>
 
-A persistent side panel for Claude Code sessions. Three-screen TUI dashboard with background AI curator.
+<p align="center">
+  <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12+-blue.svg"></a>
+  <a href="https://github.com/alex-radaev/claude-panel/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/alex-radaev/claude-panel"></a>
+  <a href="https://github.com/alex-radaev/claude-panel/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/alex-radaev/claude-panel"></a>
+</p>
 
-## Screens
+<!-- TODO: Replace with actual hero GIF recorded with VHS -->
+<!-- <p align="center"><img src="demo/hero.gif" alt="Claude Panel in action" width="800"></p> -->
 
-| Screen | Purpose | Updated by |
-|--------|---------|------------|
-| **main** | Free-form canvas — plans, diagrams, explanations | Background Haiku agent |
-| **status** | Structured dashboard — task, files, decisions | Stop hook + LLM curator |
-| **ambient** | Screensaver animations | Direct `panel()` call |
+A persistent side panel that lives next to your Claude Code session. It shows what Claude is working on, what decisions were made, and plays ambient terminal animations — all without adding noise to the conversation.
+
+---
+
+## What It Does
+
+Claude Panel gives you **three live screens** in an iTerm2 split pane:
+
+| Screen | What it shows | How it updates |
+|--------|--------------|----------------|
+| **Main** | Mood emoji, rich content, diagrams, key code | Background agents (zero conversation noise) |
+| **Status** | Current task, files changed, decisions made | Stop hook + AI curator (automatic) |
+| **Ambient** | Screensaver animations | `panel(screensaver="name")` |
+
+The panel updates itself. A lightweight AI curator runs after each Claude response, reads the conversation, and updates the status dashboard. Claude can also express its "mood" with emoji art on the main screen — think of it as a non-verbal communication channel.
+
+## Screensavers
+
+Eight built-in ambient animations. Navigate to the ambient screen with arrow keys or `panel(show="ambient")`.
+
+`banquet` | `city-lights` | `dvd-bounce` | `matrix`
+
+`noir` | `rain-city` | `space-flight` | `tokyo-drift`
+
+<!-- TODO: Replace with actual screensaver GIF grid -->
+<!-- <p align="center"><img src="demo/screensavers.gif" alt="Screensaver showcase" width="600"></p> -->
+
+Screensavers are plain Python scripts that receive a Rich canvas. [Creating your own takes ~10 lines of code.](CONTRIBUTING.md#creating-a-screensaver)
 
 ## Install
 
-### As a plugin (recommended)
-
 ```bash
-claude plugin marketplace add /path/to/claude-panel
+# As a Claude Code plugin (recommended)
 claude plugin install claude-panel@claude-panel
 ```
 
-### Manual
+Or manually:
 
 ```bash
-cd ~/Desktop/Projects/claude-panel
+git clone https://github.com/alex-radaev/claude-panel
+cd claude-panel
 uv sync
 ```
 
-Add to `.mcp.json` or `~/.claude/settings.json` for MCP server access.
+Then add to your MCP config (`~/.claude/settings.json` or `.mcp.json`).
 
 ## Usage
 
-### Start the viewer
+### Start the panel
 
 ```bash
-# Automatic (via MCP tool)
-# Claude calls panel_open() to launch in iTerm2 split
+# Via Claude — just ask it to open the panel, or:
+panel_open()  # launches in iTerm2 split pane
 
 # Manual
-cd ~/Desktop/Projects/claude-panel && uv run claude-panel
+uv run claude-panel
 ```
 
-### Panel updates (zero conversation noise)
-
-Claude updates the panel via background agents — invisible to the user:
-
-```python
-# Background Haiku agent writes to state.json (~5s)
-Agent(mode="dontAsk", model="haiku", run_in_background=True,
-      prompt="update panel main screen with...")
-
-# Status auto-updates via Stop hook after every response (~15s)
-```
-
-### Direct commands (one-liners)
+### Panel commands
 
 ```python
 panel(show="ambient")              # switch to screensaver
-panel(screensaver="rain-city")     # change screensaver
-panel(show="main")                 # switch to main
+panel(show="main")                 # switch to main canvas
+panel(screensaver="tokyo-drift")   # change screensaver
+panel(show="status")               # view status dashboard
 ```
 
-## Architecture
+### Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| `q` | Quit viewer |
+| `<-` `->` | Cycle screens |
+| `c` | Clear panel |
+
+## How It Works
 
 ```
-┌──────────────────┐     ┌──────────────────┐
-│   Claude Code    │     │   iTerm2 Split   │
-│                  │     │                  │
-│  MCP Server      │     │  Textual TUI     │
-│  (server.py)     │     │  (viewer.py)     │
-└────────┬─────────┘     └────────┬─────────┘
-         │  WRITES                │ POLLS
-         └──────► state.json ◄────┘
-              ~/.claude-panel/
+ Claude Code (session A)          iTerm2 Split Pane
+┌──────────────────────┐         ┌──────────────────┐
+│                      │         │                  │
+│  MCP Server          │         │  Textual TUI     │
+│  (per-session)       │         │  Viewer          │
+│                      │         │                  │
+└──────────┬───────────┘         └────────┬─────────┘
+           │  WRITES                      │ POLLS
+           └──────►  per-session   ◄──────┘
+                     state.json
+            ~/.claude-panel/sessions/<id>/
 ```
 
-### Update flow
+**Session isolation:** Each Claude Code session gets its own state file. Run multiple sessions simultaneously — they won't interfere with each other. The viewer automatically tracks whichever session is active.
 
-1. **Stop hook** fires after each response → writes loading spinner → runs status curator (Haiku LLM)
-2. **Background agent** spawned by Claude → updates main screen with rich content
-3. **Viewer** polls `state.json` every 300ms → re-renders on timestamp change
+**Update flow:**
 
-### Files
+1. **Stop hook** fires after each response — runs the AI curator (Haiku) to update the status screen
+2. **Background agent** spawned by Claude — updates the main screen with mood, diagrams, or rich content
+3. **Viewer** polls the state file every 300ms — re-renders on change
 
-```
-claude-panel/
-├── .claude-plugin/          # Plugin manifest + marketplace
-├── hooks/
-│   ├── hooks.json           # Stop hook registration
-│   └── scripts/
-│       ├── curator.sh       # Loading indicator + status curator
-│       └── session-start.sh # Detects viewer, reminds Claude
-├── src/claude_panel/
-│   ├── server.py            # MCP tools (panel, screensaver, etc.)
-│   ├── viewer.py            # Textual TUI with multi-screen + spinner
-│   ├── curator.py           # State helpers + status LLM curator
-│   └── constants.py         # Paths, poll interval
-└── pyproject.toml
-```
-
-## Config
+## Configuration
 
 `~/.claude-panel/config.json`:
 
 ```json
 {
   "model": "claude-haiku-4-5-20251001",
-  "favorite_screensaver": "rain-city",
+  "favorite_screensaver": "tokyo-drift",
   "update_every_n": 1
 }
 ```
 
-## Keybindings (viewer)
+## Project Structure
 
-| Key | Action |
-|-----|--------|
-| `q` | Quit |
-| `←` `→` | Browse screens |
-| `c` | Clear |
+```
+claude-panel/
+├── .claude-plugin/          # Plugin manifest
+├── hooks/
+│   ├── hooks.json           # Hook registration
+│   └── scripts/
+│       ├── curator.sh       # Status curator (Stop hook)
+│       ├── session-start.sh # Session init + cleanup
+│       └── nudge.sh         # Staleness nudge
+├── src/claude_panel/
+│   ├── server.py            # MCP tools (panel, screensaver, etc.)
+│   ├── viewer.py            # Textual TUI viewer
+│   ├── curator.py           # State helpers + AI curator
+│   ├── session.py           # Per-session state isolation
+│   └── constants.py         # Paths, config
+└── pyproject.toml
+```
 
-## Screensavers
+## Contributing
 
-Available: `banquet`, `city-lights`, `dvd-bounce`, `matrix`, `noir`, `rain-city`, `space-flight`, `tokyo-drift`
+Contributions welcome — especially new screensavers. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, including a screensaver template that gets you started in ~10 lines of Python.
+
+## License
+
+MIT

@@ -1,0 +1,40 @@
+name: Screensaver Idea
+description: Propose a new screensaver animation
+labels: ["screensaver"]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Name
+      description: A short name for the screensaver.
+      placeholder: e.g. Starfield, Matrix Rain, Lava Lamp
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description of the Animation
+      description: Describe the visual effect and how the animation should behave.
+      placeholder: Describe the animation in detail...
+    validations:
+      required: true
+
+  - type: textarea
+    id: inspiration
+    attributes:
+      label: Inspiration / Reference
+      description: Links to videos, GIFs, or other animations that inspired this idea.
+      placeholder: Paste links to reference material...
+    validations:
+      required: false
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Code
+      description: If you have a working script or prototype, paste it here.
+      placeholder: Paste your code here...
+      render: python
+    validations:
+      required: false

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1280px;
+    height: 640px;
+    background: #1e1e2e;
+    font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* Left side - simulated Claude Code session */
+  .left {
+    width: 55%;
+    padding: 24px 28px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    border-right: 1px solid #313244;
+  }
+
+  .title {
+    font-size: 42px;
+    font-weight: 700;
+    color: #cdd6f4;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+  }
+
+  .tagline {
+    font-size: 17px;
+    color: #a6adc8;
+    margin-bottom: 32px;
+    line-height: 1.5;
+  }
+
+  .features {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .feature {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 15px;
+    color: #bac2de;
+  }
+
+  .feature-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .f1 .feature-icon { background: #45475a; color: #f5c2e7; }
+  .f2 .feature-icon { background: #45475a; color: #89dceb; }
+  .f3 .feature-icon { background: #45475a; color: #a6e3a1; }
+  .f4 .feature-icon { background: #45475a; color: #fab387; }
+
+  /* Right side - simulated panel */
+  .right {
+    width: 45%;
+    background: #181825;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel-header {
+    text-align: center;
+    font-size: 12px;
+    color: #585b70;
+    padding: 4px 0 8px;
+    border-bottom: 1px solid #313244;
+  }
+
+  .screen-bar {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    font-size: 12px;
+    padding: 4px 0;
+  }
+
+  .screen-tab { color: #585b70; }
+  .screen-tab.active { color: #89b4fa; font-weight: 600; }
+
+  .panel-section {
+    border: 1px solid #313244;
+    border-radius: 8px;
+    padding: 10px 14px;
+  }
+
+  .section-title {
+    font-size: 11px;
+    color: #89b4fa;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+
+  .section-body {
+    font-size: 13px;
+    color: #cdd6f4;
+    line-height: 1.6;
+  }
+
+  .mood-display {
+    text-align: center;
+    padding: 20px 0;
+  }
+
+  .mood-emoji {
+    font-size: 48px;
+    margin-bottom: 8px;
+  }
+
+  .mood-text {
+    font-size: 15px;
+    color: #cdd6f4;
+    font-weight: 600;
+  }
+
+  .mood-tip {
+    font-size: 12px;
+    color: #6c7086;
+    font-style: italic;
+    margin-top: 4px;
+  }
+
+  .dim { color: #6c7086; }
+  .green { color: #a6e3a1; }
+  .file { color: #89dceb; }
+</style>
+</head>
+<body>
+  <div class="left">
+    <div class="title">Claude Panel</div>
+    <div class="tagline">
+      A real-time context dashboard and<br>
+      ambient screensaver for Claude Code
+    </div>
+    <div class="features">
+      <div class="feature f1">
+        <div class="feature-icon">M</div>
+        <span>Main canvas with mood, diagrams, rich content</span>
+      </div>
+      <div class="feature f2">
+        <div class="feature-icon">S</div>
+        <span>Auto-updating status dashboard via AI curator</span>
+      </div>
+      <div class="feature f3">
+        <div class="feature-icon">A</div>
+        <span>8 built-in ambient screensaver animations</span>
+      </div>
+      <div class="feature f4">
+        <div class="feature-icon">~</div>
+        <span>Per-session isolation for multi-session use</span>
+      </div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="screen-bar">
+      <span class="screen-tab active">&#x25cf; main</span>
+      <span class="screen-tab">&#x25cb; status</span>
+      <span class="screen-tab">&#x25cb; ambient</span>
+    </div>
+    <div class="mood-display">
+      <div class="mood-emoji">&#x1f525;</div>
+      <div class="mood-text">Session isolation working!</div>
+      <div class="mood-tip">Each session gets its own state</div>
+    </div>
+    <div class="panel-section">
+      <div class="section-title">Current Task</div>
+      <div class="section-body">Adding per-session state isolation</div>
+    </div>
+    <div class="panel-section">
+      <div class="section-title">Files Changed</div>
+      <div class="section-body">
+        <span class="file">session.py</span> <span class="dim">- session identification</span><br>
+        <span class="file">curator.py</span> <span class="dim">- session-aware state</span><br>
+        <span class="file">viewer.py</span> <span class="dim">- active session polling</span>
+      </div>
+    </div>
+    <div class="panel-section">
+      <div class="section-title">Decisions</div>
+      <div class="section-body">
+        <span class="green">&#x2713;</span> Per-session state files<br>
+        <span class="green">&#x2713;</span> Process tree for session ID
+      </div>
+    </div>
+  </div>
+</body>
+</html>
