@@ -260,7 +260,8 @@ nothing specific to pin — it keeps the panel alive and fun.
 
 ## Response format
 
-Return ONLY valid JSON, no markdown fences:
+CRITICAL: Return ONLY a single JSON object. No text before or after. No explanation. No markdown fences. \
+Just the raw JSON. If you write anything other than JSON, the panel breaks.
 
 **Rich content (preferred when there's substance):**
 {{"task": "...", "files": "...", "decisions": "...", "emoji": "🔥", "main_mode": "sections", "main_sections": [{{"id": "what-changed", "title": "What Changed", "content": "`auth.py` — added JWT middleware\\n\\n```python\\nasync def verify_token(token: str):\\n    ...\\n```"}}, {{"id": "next", "title": "Next Steps", "content": "- [ ] Add refresh token logic\\n- [ ] Write tests"}}]}}
