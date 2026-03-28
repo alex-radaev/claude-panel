@@ -81,12 +81,7 @@ fi
 # ── Run status curator (LLM-powered, updates status screen only) ──
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-VENV="$PLUGIN_ROOT/.venv/bin/python3"
 
-if [ ! -f "$VENV" ]; then
-    echo "$INPUT" | uv run --directory "$PLUGIN_ROOT" python -m claude_panel.curator \
-        >> "$HOME/.claude-panel/curator.log" 2>&1
-else
-    echo "$INPUT" | PYTHONPATH="$PLUGIN_ROOT/src" "$VENV" -m claude_panel.curator \
-        >> "$HOME/.claude-panel/curator.log" 2>&1
-fi
+# Always use uv run to pick up latest source code
+echo "$INPUT" | uv run --directory "$PLUGIN_ROOT" python -m claude_panel.curator \
+    >> "$HOME/.claude-panel/curator.log" 2>&1
