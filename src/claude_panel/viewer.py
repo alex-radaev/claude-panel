@@ -17,7 +17,7 @@ from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widgets import Footer, Header, Markdown, RichLog, Static
 
-from claude_panel.constants import POLL_INTERVAL, STATE_FILE
+from claude_panel.constants import CONTENT_DIR, POLL_INTERVAL, STATE_FILE
 
 
 class SectionPanel(Static):
@@ -231,17 +231,37 @@ class PanelViewer(App):
 
         if screen_type == "screensaver":
             await self._render_screensaver_inline(content, screen_data)
+        elif screen_type == "file":
+            # Re-read the markdown file for latest content
+            sections = self._load_file_sections(screen_data)
+            await self._mount_sections(content, sections)
         else:
             sections = screen_data.get("sections", []) if isinstance(screen_data, dict) else screen_data
-            if not sections:
-                await content.mount(WaitingMessage())
-            else:
-                for section in sections:
-                    sid = section.get("id", "unknown")
-                    title = section.get("title", "Untitled")
-                    body = section.get("content", "")
-                    panel = SectionPanel(f"{self._active_screen}-{sid}", title, body)
-                    await content.mount(panel)
+            await self._mount_sections(content, sections)
+
+    def _load_file_sections(self, screen_data: dict[str, Any]) -> list[dict[str, str]]:
+        """Load sections from a markdown file, falling back to cached sections."""
+        filename = screen_data.get("file", "")
+        file_path = CONTENT_DIR / filename
+        if file_path.exists():
+            try:
+                from claude_panel.server import _parse_markdown_to_sections
+                return _parse_markdown_to_sections(file_path.read_text())
+            except Exception:
+                pass
+        return screen_data.get("sections", [])
+
+    async def _mount_sections(self, container: VerticalScroll, sections: list[dict[str, str]]) -> None:
+        """Mount section panels into a container."""
+        if not sections:
+            await container.mount(WaitingMessage())
+        else:
+            for section in sections:
+                sid = section.get("id", "unknown")
+                title = section.get("title", "Untitled")
+                body = section.get("content", "")
+                panel = SectionPanel(f"{self._active_screen}-{sid}", title, body)
+                await container.mount(panel)
 
     async def _render_screensaver_inline(self, container: VerticalScroll, screen_data: dict[str, Any]) -> None:
         """Render a screensaver as an inline screen (within multi-screen mode)."""

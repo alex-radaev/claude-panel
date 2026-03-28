@@ -10,7 +10,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from claude_panel.constants import PANEL_DIR, SCREENSAVERS_DIR, STATE_FILE
+from claude_panel.constants import CONTENT_DIR, PANEL_DIR, SCREENSAVERS_DIR, STATE_FILE
 
 # ── Standard screen ordering ──
 # main is Claude's free-form display, status is the structured dashboard,
@@ -27,12 +27,12 @@ You manage a persistent side panel with three standard screens:
 
 1. **main** — Your free-form canvas. Show whatever is most relevant right now: \
 a plan, progress, explanation, debug context. Replace the content freely as focus shifts.
+   **Preferred:** Write markdown to `~/.claude-panel/content/main.md`, then:
    ```python
-   panel(sections=[
-       {"id": "goal", "title": "Goal", "content": "Add user auth"},
-       {"id": "approach", "title": "Approach", "content": "JWT + middleware"},
-   ])
+   panel(file="main.md")  # tiny call, content stays in the file
    ```
+   Use `## Headings` in the markdown — each becomes a panel section.
+   Alternative (inline): `panel(sections=[{"id": "goal", "title": "Goal", "content": "..."}])`
 
 2. **status** — Structured session dashboard. Always shows: current task, files \
 changed, and decisions made. Update individual sections incrementally as you work:
@@ -72,8 +72,8 @@ changed, and decisions made. Update individual sections incrementally as you wor
 - **decisions**: After making a non-obvious choice (what + why)
 
 ## Behavior
-- `panel(sections=[...])` updates main and shows it — use this most of the time
-- `panel(screen="status", section=ID, content=TEXT)` updates one status section
+- **For main:** Write to `~/.claude-panel/content/main.md` then `panel(file="main.md")` — keeps conversation clean
+- **For status:** `panel(screen="status", section=ID, content=TEXT)` — short incremental updates
 - Don't update every message — only when context meaningfully changed
 - Keep content short and scannable
 - User can arrow-key browse between screens
@@ -140,12 +140,68 @@ STATUS_SECTIONS = [
 # ── Panel tools ─────────────────────────────────────────────────────
 
 
+def _parse_markdown_to_sections(text: str) -> list[dict[str, str]]:
+    """Parse markdown with ## headers into panel sections."""
+    sections: list[dict[str, str]] = []
+    current_title: str | None = None
+    current_id: str | None = None
+    current_lines: list[str] = []
+    # Content before any heading
+    preamble_lines: list[str] = []
+
+    for line in text.splitlines():
+        if line.startswith("## "):
+            # Save previous section
+            if current_title is not None:
+                sections.append({
+                    "id": current_id or "unknown",
+                    "title": current_title,
+                    "content": "\n".join(current_lines).strip(),
+                })
+            elif preamble_lines:
+                # Content before first heading becomes a section
+                joined = "\n".join(preamble_lines).strip()
+                if joined:
+                    sections.append({
+                        "id": "intro",
+                        "title": "Overview",
+                        "content": joined,
+                    })
+
+            current_title = line[3:].strip()
+            current_id = current_title.lower().replace(" ", "-").replace("/", "-")
+            current_lines = []
+        elif current_title is not None:
+            current_lines.append(line)
+        else:
+            preamble_lines.append(line)
+
+    # Save last section
+    if current_title is not None:
+        sections.append({
+            "id": current_id or "unknown",
+            "title": current_title,
+            "content": "\n".join(current_lines).strip(),
+        })
+    elif preamble_lines:
+        joined = "\n".join(preamble_lines).strip()
+        if joined:
+            sections.append({
+                "id": "content",
+                "title": "Content",
+                "content": joined,
+            })
+
+    return sections
+
+
 @mcp.tool()
 async def panel(
     sections: list[dict[str, str]] | None = None,
     screen: str | None = None,
     section: str | None = None,
     content: str | None = None,
+    file: str | None = None,
     screensaver: str | None = None,
     show: str | None = None,
     clear: str | None = None,
@@ -159,12 +215,15 @@ async def panel(
         section: Update a single section by ID on a screen (use with `content`).
                  Most useful for status: panel(screen="status", section="files", content="...")
         content: New content for the section specified by `section`.
+        file: Load a screen from a markdown file in ~/.claude-panel/content/.
+              Use ## headings to define sections. Defaults to "main" screen.
+              Write the file first, then call panel(file="main.md") — keeps conversation clean.
         screensaver: Set up the ambient screen with a saved screensaver name.
         show: Switch the visible screen (e.g., "ambient", "status", "main").
         clear: Remove a custom screen by name. Cannot clear standard screens.
 
     Common patterns:
-      panel(sections=[...])                                          # update main, show it
+      panel(file="main.md")                                          # load from file, show it
       panel(screen="status", section="files", content="- server.py") # update one status section
       panel(screensaver="tokyo-drift")                               # set up ambient
       panel(show="ambient")                                          # switch to screensaver
@@ -263,6 +322,30 @@ async def panel(
             state["active"] = target
         _write_state(state)
         return f"Updated '{section}' on {target} screen."
+
+    # ── Handle file-based update ──
+    if file is not None:
+        target = screen if screen is not None else "main"
+        file_path = CONTENT_DIR / file
+        if not file_path.exists():
+            return f"File not found: {file_path}"
+        text = file_path.read_text()
+        parsed = _parse_markdown_to_sections(text)
+        if not parsed:
+            return f"No content found in {file}."
+        state = _ensure_multi(state)
+        screens = state.get("screens", {})
+        order = state.get("screen_order", [])
+        screens[target] = {"type": "file", "file": file, "sections": parsed}
+        if target not in order:
+            order.append(target)
+        state["screens"] = screens
+        state["screen_order"] = _ensure_screen_order(order)
+        state["active"] = target
+        _write_state(state)
+        n = len(order)
+        label = "Main screen" if target == "main" else f"Screen '{target}'"
+        return f"{label} loaded from {file} ({len(parsed)} sections). {n} screen{'s' if n != 1 else ''} total."
 
     # ── Handle full sections update ──
     if sections is not None:
