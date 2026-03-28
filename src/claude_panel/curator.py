@@ -204,17 +204,15 @@ DEFAULT_CONFIG = {
 }
 
 STATUS_PROMPT = """\
-You are a panel curator. You update two things:
-1. **Status screen** — task, files changed, decisions
-2. **Main screen mood** — pick an emoji that reflects the session vibe
+You are a panel curator managing a developer's side panel. You update:
+1. **Status screen** — task, files changed, decisions (structured dashboard)
+2. **Main screen** — YOUR creative canvas. Show whatever is most useful right now.
 
-## Current status content
+## Current panel state
 
-{current_status}
+**Status:** {current_status}
 
-## Current mood
-
-{current_mood}
+**Main screen:** {current_mood}
 
 ## Recent conversation
 
@@ -222,29 +220,52 @@ You are a panel curator. You update two things:
 
 ## Your task
 
-Extract from the conversation:
-1. **task** — What is the current task/goal? One line.
-2. **files** — What files have been changed or discussed? Bullet list with one-line descriptions.
-3. **decisions** — What non-obvious decisions were made and why? Bullet list.
-4. **emoji** — Pick ONE emoji that best matches the current vibe.
-5. **context** — One-line description to show under the emoji.
+### Status (structured — always update)
+1. **task** — Current task/goal. One line.
+2. **files** — Files changed or discussed. Bullet list with descriptions.
+3. **decisions** — Non-obvious decisions made. Bullet list with why.
 
-### Emoji vocabulary (pick exactly one):
-🔥 = on fire, fast progress    🤔 = thinking, investigating
-🎯 = focused, clear goal       🎉 = completed something, celebration
-🏗️ = building, creating        🐛 = fixing bugs, debugging
-💡 = insight, discovery         ☕ = idle, chill, casual chat
-⚡ = urgent, critical           🧪 = testing, verifying
-🎨 = designing, planning       📚 = reading docs, learning
-🚀 = shipping, deploying       🔧 = refactoring, cleanup
+### Main screen (creative — you decide what to show)
+
+Choose the BEST format for what's happening right now:
+
+**Option A: Mood emoji** — for simple states (idle, focused, celebrating)
+Return `"main_mode": "mood"` with `"emoji"` and `"context"`.
+
+**Option B: Rich content** — for complex work (explanations, diagrams, concepts)
+Return `"main_mode": "sections"` with `"main_sections"` array.
+
+Use rich content when:
+- Claude is explaining something complex → show the key concept/diagram
+- Multi-step work → show a progress checklist
+- Architecture discussion → show a diagram
+- Debugging → show hypothesis and evidence
+- Claude's internal thinking would help the user understand what's happening
+
+Use mood emoji when:
+- Idle / casual chat → ☕
+- Simple progress, no complex context → 🔥 🎯 🏗️
+- Just completed something → 🎉
+- Nothing specific to visualize
+
+### Emoji vocabulary (for mood mode):
+🔥 on fire  🤔 thinking  🎯 focused  🎉 done  🏗️ building  🐛 debugging
+💡 insight  ☕ chill  ⚡ urgent  🧪 testing  🎨 designing  📚 learning
+🚀 shipping  🔧 refactoring
+
+## Response format
 
 Return ONLY valid JSON, no markdown fences:
 
-{{"task": "...", "files": "...", "decisions": "...", "emoji": "🔥", "context": "Making fast progress"}}
+For mood:
+{{"task": "...", "files": "...", "decisions": "...", "main_mode": "mood", "emoji": "🔥", "context": "Making fast progress"}}
+
+For rich content:
+{{"task": "...", "files": "...", "decisions": "...", "main_mode": "sections", "main_sections": [{{"id": "concept", "title": "Key Concept", "content": "markdown..."}}, {{"id": "progress", "title": "Progress", "content": "- [x] step 1..."}}]}}
 
 - Set status fields to null if unchanged.
-- Always include emoji and context — these update the main screen mood.
-- If truly idle with nothing happening, use ☕ with a chill context.
+- Keep main content short and scannable — the user glances at the panel.
+- Use markdown in content: **bold**, `code`, bullet lists, checkboxes.
 """
 
 
@@ -377,27 +398,24 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
                 state = update_status_section(state, field, str(value))
                 changed = True
 
-        # Apply mood/emoji update — respect main Claude's overrides with timeout
-        main_screen = state.get("screens", {}).get("main", {})
-        main_type = main_screen.get("type", "")
-        emoji = updates.get("emoji")
-        context = updates.get("context", "")
-        if emoji and context:
-            # Check if Claude's override is stale (>2 min old)
-            override_stale = False
-            if main_type not in ("mood", ""):
-                main_ts = state.get("ts", 0)
-                age = time.time() - main_ts
-                if age > 120:  # 2 minutes
-                    override_stale = True
-                    logger.info(f"Main override stale ({age:.0f}s) — reclaiming for mood")
+        # Apply main screen update — curator decides mood vs rich content
+        main_mode = updates.get("main_mode", "mood")
 
-            if main_type in ("mood", "") or "main" not in state.get("screens", {}) or override_stale:
+        if main_mode == "sections":
+            # Rich content — curator wants to show explanations/diagrams/progress
+            main_sections = updates.get("main_sections", [])
+            if main_sections:
+                state = update_main(state, main_sections)
+                changed = True
+                logger.info(f"Main: rich content ({len(main_sections)} sections)")
+        else:
+            # Mood emoji
+            emoji = updates.get("emoji")
+            context = updates.get("context", "")
+            if emoji and context:
                 state = update_mood(state, emoji, context)
                 changed = True
                 logger.info(f"Mood: {emoji} {context}")
-            else:
-                logger.info(f"Mood skipped ({emoji}) — main has type '{main_type}' from Claude")
 
         if changed:
             write_state(state)
