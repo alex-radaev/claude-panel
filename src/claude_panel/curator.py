@@ -263,12 +263,13 @@ nothing specific to pin — it keeps the panel alive and fun.
 Return ONLY valid JSON, no markdown fences:
 
 **Rich content (preferred when there's substance):**
-{{"task": "...", "files": "...", "decisions": "...", "main_mode": "sections", "main_sections": [{{"id": "what-changed", "title": "What Changed", "content": "`auth.py` — added JWT middleware\\n\\n```python\\nasync def verify_token(token: str):\\n    ...\\n```"}}, {{"id": "next", "title": "Next Steps", "content": "- [ ] Add refresh token logic\\n- [ ] Write tests"}}]}}
+{{"task": "...", "files": "...", "decisions": "...", "emoji": "🔥", "main_mode": "sections", "main_sections": [{{"id": "what-changed", "title": "What Changed", "content": "`auth.py` — added JWT middleware\\n\\n```python\\nasync def verify_token(token: str):\\n    ...\\n```"}}, {{"id": "next", "title": "Next Steps", "content": "- [ ] Add refresh token logic\\n- [ ] Write tests"}}]}}
 
 **Mood emoji (for ambient/simple states):**
-{{"task": "...", "files": "...", "decisions": "...", "main_mode": "mood", "emoji": "🔥", "context": "Auth middleware done, moving to tests"}}
+{{"task": "...", "files": "...", "decisions": "...", "emoji": "☕", "main_mode": "mood", "context": "Waiting for next task"}}
 
 Rules:
+- **Always include emoji** — it appears in the section title (rich) or as the main display (mood).
 - Set status fields to null if unchanged.
 - Keep content **short and scannable** — user glances, not reads.
 - Use markdown: **bold**, `code`, ```code blocks```, bullet lists, checkboxes `- [x]`.
@@ -408,17 +409,18 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
 
         # Apply main screen update — curator decides mood vs rich content
         main_mode = updates.get("main_mode", "mood")
+        emoji = updates.get("emoji", "")
 
         if main_mode == "sections":
-            # Rich content — curator wants to show explanations/diagrams/progress
             main_sections = updates.get("main_sections", [])
             if main_sections:
+                # Inject emoji into first section title if provided
+                if emoji and main_sections[0].get("title"):
+                    main_sections[0]["title"] = f"{emoji} {main_sections[0]['title']}"
                 state = update_main(state, main_sections)
                 changed = True
-                logger.info(f"Main: rich content ({len(main_sections)} sections)")
+                logger.info(f"Main: {emoji} rich content ({len(main_sections)} sections)")
         else:
-            # Mood emoji
-            emoji = updates.get("emoji")
             context = updates.get("context", "")
             if emoji and context:
                 state = update_mood(state, emoji, context)
