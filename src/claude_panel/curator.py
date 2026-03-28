@@ -124,6 +124,20 @@ def set_active(state: dict[str, Any], screen: str) -> dict[str, Any]:
     return state
 
 
+def update_mood(state: dict[str, Any], emoji: str, context: str, tip: str = "") -> dict[str, Any]:
+    """Update main screen with an emoji mood + context + optional tip.
+
+    This is the primary way the main agent expresses state on the panel.
+    The emoji is shown large, with context below and an optional tip.
+    """
+    sections = [
+        {"id": "mood", "title": "", "content": f"# {emoji}\n\n**{context}**"},
+    ]
+    if tip:
+        sections.append({"id": "tip", "title": "Tip", "content": tip})
+    return update_main(state, sections)
+
+
 # ── Hook-based status curator ──────────────────────────────────────
 # Runs as a Stop hook. Only updates the status screen (task, files, decisions).
 # Main screen is handled by background agents spawned by main Claude.

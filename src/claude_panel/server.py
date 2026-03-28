@@ -21,12 +21,13 @@ STANDARD_ORDER = ["main", "status", "ambient"]
 mcp = FastMCP(
     "claude-panel",
     instructions="""\
-You manage a persistent side panel with three screens: main, status, ambient.
+You have a persistent side panel. The **main screen is yours** — use it to express \
+what's happening, show context, and communicate non-verbally with the user.
 
-## How to update the panel (IMPORTANT)
+## Express yourself on the main screen (DO THIS)
 
-To keep the conversation clean, update the panel via a **background agent**. \
-This is invisible to the user — zero noise in the chat.
+After each meaningful response, spawn a background agent to update the main screen. \
+Pick an emoji that matches the vibe, add context, and optionally a tip:
 
 ```python
 Agent(
@@ -35,58 +36,83 @@ Agent(
     run_in_background=True,
     prompt=\"\"\"Run this bash command:
 cd /Users/aradaev/Desktop/Projects/claude-panel && uv run python3 -c "
-from claude_panel.curator import read_state, write_state, update_main, update_status_section, set_active
+from claude_panel.curator import read_state, write_state, update_mood
 state = read_state()
-state = update_main(state, [
-    {'id': 'SECTION_ID', 'title': 'SECTION_TITLE', 'content': 'MARKDOWN_CONTENT'},
-])
-state = update_status_section(state, 'task', 'CURRENT_TASK')
-state = update_status_section(state, 'files', 'FILES_CHANGED')
-state = update_status_section(state, 'decisions', 'DECISIONS_MADE')
-state = set_active(state, 'main')
+state = update_mood(state, 'EMOJI', 'CONTEXT', 'TIP')
 write_state(state)
-print('Done')
 "\"\"\"
 )
 ```
 
-Fill in the sections/content with whatever is relevant RIGHT NOW. \
-Use this pattern whenever you want to show context, progress, explanations, or diagrams.
+### Emoji vocabulary
 
-## When to update
+| Emoji | Mood | Use when... |
+|-------|------|-------------|
+| 🔥 | On fire | Making fast progress, things are clicking |
+| 🤔 | Thinking | Investigating, debugging, exploring |
+| 🎯 | Focused | Clear goal, executing methodically |
+| 🎉 | Celebration | Just completed something, milestone |
+| 🏗️ | Building | Writing new code, creating |
+| 🐛 | Bug hunt | Fixing issues, chasing errors |
+| 💡 | Insight | Discovered something, had an idea |
+| ☕ | Chill | Idle, casual conversation |
+| ⚡ | Urgent | Time-sensitive, important fix |
+| 🧪 | Testing | Running tests, verifying |
+| 🎨 | Designing | Architecture, planning, creative work |
+| 📚 | Learning | Reading docs, exploring codebase |
+| 🚀 | Shipping | Committing, pushing, deploying |
+| 🔧 | Refactoring | Cleaning up, improving code |
 
-- **Starting a task** — show goal, approach, key files on main
-- **Making progress** — update main with checklist, update status files/decisions
-- **Explaining something** — diagrams, architecture, data structures on main
-- **After editing files** — update status files section
-- **Making a decision** — update status decisions section
-- **Idle / done** — `panel(show="ambient")`
-- **Don't update every message** — only when context meaningfully changed
+### Examples
 
-## Direct panel() calls (for quick commands only)
-
-Use the panel() tool directly for one-liners that don't need a background agent:
-- `panel(show="ambient")` — switch to screensaver
-- `panel(show="main")` — switch to main
-- `panel(screensaver="rain-city")` — change screensaver
-
-## For fetching external content
-
-Spawn a background **Sonnet** agent when the user asks for docs, web content, etc:
 ```python
-Agent(
-    description="Fetch docs for panel",
-    mode="dontAsk",
-    run_in_background=True,
-    prompt="Fetch [URL/topic], extract key content, write to panel state..."
-)
+# Just started a task
+update_mood(state, '🎯', 'Adding user authentication', 'Key files: auth.py, routes.py')
+
+# Making progress
+update_mood(state, '🔥', 'Auth middleware working', '3 of 5 steps done')
+
+# Hit a bug
+update_mood(state, '🐛', 'Token validation failing on refresh', 'Checking expiry logic')
+
+# Finished!
+update_mood(state, '🎉', 'Auth complete — all tests passing', 'Ready to commit')
+
+# Idle
+update_mood(state, '☕', 'Waiting for next task', '')
 ```
 
-## Screens
+### When to update main
+- When the **mood changes** — new task, progress, blocker, completion
+- When you want to **show something** — diagram, concept, key info
+- **Not every message** — only when something meaningful shifted
 
-1. **main** — Free-form canvas. Plans, progress, diagrams, explanations.
-2. **status** — Structured dashboard: task, files changed, decisions.
-3. **ambient** — Screensaver. User can arrow-key browse between screens.
+### Rich content on main
+
+For bigger content (explanations, diagrams, docs), use `update_main()` with full sections:
+```python
+update_main(state, [
+    {'id': 'diagram', 'title': 'Architecture', 'content': '...'},
+    {'id': 'notes', 'title': 'Key Points', 'content': '...'},
+])
+```
+
+Or spawn a Sonnet agent to fetch external docs:
+```python
+Agent(description="Fetch docs for panel", mode="bypassPermissions",
+      run_in_background=True, prompt="Fetch [URL], write to panel...")
+```
+
+## Status screen (automatic)
+
+The status screen auto-updates via a Stop hook — you don't need to manage it. \
+It shows: current task, files changed, decisions made.
+
+## Quick commands (direct tool calls)
+
+- `panel(show="ambient")` — screensaver
+- `panel(show="main")` — switch to main
+- `panel(screensaver="rain-city")` — change screensaver
 """,
 )
 
