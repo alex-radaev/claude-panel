@@ -374,13 +374,21 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
                 state = update_status_section(state, field, value)
                 changed = True
 
-        # Apply mood/emoji update
+        # Apply mood/emoji update — but only if main Claude hasn't pushed
+        # specific content (type "sections" or "file" means Claude is showing something)
+        main_screen = state.get("screens", {}).get("main", {})
+        main_type = main_screen.get("type", "")
         emoji = updates.get("emoji")
         context = updates.get("context", "")
         if emoji and context:
-            state = update_mood(state, emoji, context)
-            changed = True
-            logger.info(f"Mood: {emoji} {context}")
+            if main_type in ("mood", "") or "main" not in state.get("screens", {}):
+                # Curator owns main — update the mood
+                state = update_mood(state, emoji, context)
+                changed = True
+                logger.info(f"Mood: {emoji} {context}")
+            else:
+                # Main Claude pushed content — respect it, don't overwrite
+                logger.info(f"Mood skipped ({emoji}) — main has type '{main_type}' from Claude")
 
         if changed:
             write_state(state)
