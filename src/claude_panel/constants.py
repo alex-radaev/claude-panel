@@ -1,7 +1,9 @@
 from pathlib import Path
 
 PANEL_DIR = Path.home() / ".claude-panel"
-STATE_FILE = PANEL_DIR / "state.json"
+STATE_FILE = PANEL_DIR / "state.json"  # legacy global fallback
+SESSIONS_DIR = PANEL_DIR / "sessions"
+ACTIVE_SESSION_FILE = PANEL_DIR / "active_session"
 SCREENSAVERS_DIR = PANEL_DIR / "screensavers"
 CONTENT_DIR = PANEL_DIR / "content"
 CONFIG_FILE = PANEL_DIR / "config.json"

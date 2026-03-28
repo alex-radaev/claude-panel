@@ -18,6 +18,7 @@ from textual.reactive import reactive
 from textual.widgets import Footer, Header, Markdown, RichLog, Static
 
 from claude_panel.constants import CONTENT_DIR, POLL_INTERVAL, STATE_FILE
+from claude_panel.session import get_active_session, session_state_file
 
 
 class SectionPanel(Static):
@@ -136,6 +137,9 @@ class PanelViewer(App):
     _screen_order: list[str] = []
     _active_screen: str | None = None
 
+    # Session tracking
+    _current_session_id: str | None = None
+
     # Loading spinner state
     _loading: bool = False
     _loading_message: str = "Updating..."
@@ -150,15 +154,32 @@ class PanelViewer(App):
         self.set_interval(POLL_INTERVAL, self._poll_state)
         self.set_interval(0.1, self._animate_spinner)
 
+    def _resolve_state_file(self) -> Any:
+        """Determine which state file to poll.
+
+        Checks active_session first; falls back to the global state.json.
+        Forces re-render when the active session changes.
+        """
+        active_id = get_active_session()
+        if active_id != self._current_session_id:
+            self._current_session_id = active_id
+            self.last_ts = 0.0  # force re-render on session switch
+
+        if active_id:
+            return session_state_file(active_id)
+        return STATE_FILE
+
     async def _poll_state(self) -> None:
         """Check the state file for updates."""
         try:
-            if not STATE_FILE.exists():
+            state_file = self._resolve_state_file()
+
+            if not state_file.exists():
                 if self.current_mode != "waiting":
                     await self._show_waiting()
                 return
 
-            raw = STATE_FILE.read_text()
+            raw = state_file.read_text()
             if not raw.strip():
                 return
 
@@ -193,10 +214,11 @@ class PanelViewer(App):
             # Update status bar (only if not loading — spinner handles that)
             if not self._loading:
                 elapsed = time.time() - ts
+                session_tag = f"[{self._current_session_id[:8]}] " if self._current_session_id else ""
                 if elapsed < 60:
-                    self.query_one("#status-bar", Static).update(f"Last updated: {elapsed:.0f}s ago")
+                    self.query_one("#status-bar", Static).update(f"{session_tag}Last updated: {elapsed:.0f}s ago")
                 else:
-                    self.query_one("#status-bar", Static).update(f"Last updated: {elapsed / 60:.0f}m ago")
+                    self.query_one("#status-bar", Static).update(f"{session_tag}Last updated: {elapsed / 60:.0f}m ago")
 
         except (json.JSONDecodeError, KeyError, OSError):
             pass
@@ -468,10 +490,11 @@ class PanelViewer(App):
         await self._render_active_screen()
 
     async def action_clear(self) -> None:
-        """Clear the panel."""
+        """Clear the panel (active session or global)."""
         await self._show_waiting()
-        if STATE_FILE.exists():
-            STATE_FILE.unlink()
+        state_file = self._resolve_state_file()
+        if state_file.exists():
+            state_file.unlink()
         self.last_ts = 0.0
 
 

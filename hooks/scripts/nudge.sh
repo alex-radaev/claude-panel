@@ -1,12 +1,32 @@
 #!/usr/bin/env bash
 # Stop hook: periodically nudge Claude to update the panel if stale.
 # Fires after each assistant response. Throttled to avoid noise.
-
-STATE_FILE="$HOME/.claude-panel/state.json"
-NUDGE_FILE="$HOME/.claude-panel/.nudge_state"
+# Session-aware: uses per-session state and nudge files.
 
 # Only nudge if the panel viewer is running
 pgrep -f "claude-panel" > /dev/null 2>&1 || exit 0
+
+# Resolve session ID from parent Claude Code process
+SESSION_ID=$(python3 -c "
+import json, os
+pid = os.getppid()
+sf = os.path.expanduser(f'~/.claude/sessions/{pid}.json')
+try:
+    data = json.loads(open(sf).read())
+    print(data.get('sessionId', ''))
+except Exception:
+    print('')
+" 2>/dev/null)
+
+# Determine state and nudge file paths
+if [ -n "$SESSION_ID" ]; then
+    STATE_DIR="$HOME/.claude-panel/sessions/$SESSION_ID"
+    STATE_FILE="$STATE_DIR/state.json"
+    NUDGE_FILE="$STATE_DIR/.nudge_state"
+else
+    STATE_FILE="$HOME/.claude-panel/state.json"
+    NUDGE_FILE="$HOME/.claude-panel/.nudge_state"
+fi
 
 # Read and increment turn counter
 COUNT=0

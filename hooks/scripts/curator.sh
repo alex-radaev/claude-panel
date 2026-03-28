@@ -1,19 +1,40 @@
 #!/usr/bin/env bash
 # Stop hook: run panel curator after Claude responds.
 # Writes a loading indicator immediately, then calls the curator for real content.
-
-STATE_FILE="$HOME/.claude-panel/state.json"
+# Session-aware: extracts session ID from transcript path for per-session state.
 
 # Only run if the panel viewer is active
 pgrep -f "claude-panel" > /dev/null 2>&1 || exit 0
 
-# ── Instant loading indicator ──
+# ── Read hook input and extract session ID ──
 INPUT=$(cat)
 
+SESSION_ID=$(python3 -c "
+import json, sys, os
+try:
+    data = json.loads('''$INPUT''') if '''$INPUT'''.strip() else {}
+    tp = data.get('transcript_path', '')
+    stem = os.path.splitext(os.path.basename(tp))[0] if tp else ''
+    print(stem if len(stem) >= 32 else '')
+except Exception:
+    print('')
+" 2>/dev/null)
+
+# ── Determine state file ──
+if [ -n "$SESSION_ID" ]; then
+    STATE_DIR="$HOME/.claude-panel/sessions/$SESSION_ID"
+    mkdir -p "$STATE_DIR"
+    STATE_FILE="$STATE_DIR/state.json"
+else
+    STATE_FILE="$HOME/.claude-panel/state.json"
+fi
+
+# ── Instant loading indicator ──
 if [ -f "$STATE_FILE" ]; then
     python3 -c "
 import json, time, tempfile, os
-sf, pd = '$STATE_FILE', os.path.dirname('$STATE_FILE')
+sf = '$STATE_FILE'
+pd = os.path.dirname(sf)
 try:
     with open(sf) as f: s = json.load(f)
     s['loading'] = True

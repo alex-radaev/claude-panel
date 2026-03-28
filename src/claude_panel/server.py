@@ -11,6 +11,11 @@ from typing import Any
 from fastmcp import FastMCP
 
 from claude_panel.constants import CONTENT_DIR, PANEL_DIR, SCREENSAVERS_DIR, STATE_FILE
+from claude_panel.session import (
+    get_session_id,
+    session_state_file,
+    set_active_session,
+)
 
 # ── Standard screen ordering ──
 # main is Claude's free-form display, status is the structured dashboard,
@@ -37,9 +42,11 @@ Agent(
     prompt=\"\"\"Run this bash command:
 cd /Users/aradaev/Desktop/Projects/claude-panel && uv run python3 -c "
 from claude_panel.curator import read_state, write_state, update_mood
-state = read_state()
+from claude_panel.session import get_session_id
+sid = get_session_id()
+state = read_state(sid)
 state = update_mood(state, 'EMOJI', 'CONTEXT', 'TIP')
-write_state(state)
+write_state(state, sid)
 "\"\"\"
 )
 ```
@@ -116,38 +123,67 @@ It shows: current task, files changed, decisions made.
 """,
 )
 
+# ── Session resolution (cached per MCP server process) ────────────
+
+_cached_session_id: str | None = None
+_session_resolved: bool = False
+
+
+def _get_session_id() -> str | None:
+    """Resolve and cache the session ID for this MCP server process."""
+    global _cached_session_id, _session_resolved
+    if not _session_resolved:
+        _cached_session_id = get_session_id()
+        _session_resolved = True
+    return _cached_session_id
+
+
 # ── State helpers ───────────────────────────────────────────────────
 
 
+def _resolve_state_file(session_id: str | None) -> tuple[Any, Any]:
+    """Return (state_file, parent_dir) for a session or global fallback."""
+    if session_id:
+        sf = session_state_file(session_id)
+        return sf, sf.parent
+    return STATE_FILE, PANEL_DIR
+
+
 def _read_state() -> dict[str, Any]:
-    """Read current state from the shared JSON file."""
-    if not STATE_FILE.exists():
+    """Read current state for this session."""
+    sid = _get_session_id()
+    state_file, _ = _resolve_state_file(sid)
+    if not state_file.exists():
         return {}
     try:
-        raw = STATE_FILE.read_text()
+        raw = state_file.read_text()
         return json.loads(raw) if raw.strip() else {}
     except (json.JSONDecodeError, OSError):
         return {}
 
 
 def _write_state(data: dict[str, Any]) -> None:
-    """Atomically write state to the shared JSON file."""
-    PANEL_DIR.mkdir(parents=True, exist_ok=True)
+    """Atomically write state for this session."""
+    import os
+    sid = _get_session_id()
+    state_file, parent_dir = _resolve_state_file(sid)
+    parent_dir.mkdir(parents=True, exist_ok=True)
     data["ts"] = time.time()
 
-    fd, tmp_path = tempfile.mkstemp(dir=PANEL_DIR, suffix=".tmp")
+    fd, tmp_path = tempfile.mkstemp(dir=str(parent_dir), suffix=".tmp")
     try:
         with open(fd, "w") as f:
             json.dump(data, f)
-        import os
-        os.rename(tmp_path, STATE_FILE)
+        os.rename(tmp_path, str(state_file))
     except BaseException:
-        import os
         try:
             os.unlink(tmp_path)
         except OSError:
             pass
         raise
+
+    if sid:
+        set_active_session(sid)
 
 
 def _ensure_multi(state: dict[str, Any]) -> dict[str, Any]:

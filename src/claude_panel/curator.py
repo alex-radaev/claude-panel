@@ -18,6 +18,11 @@ from claude_panel.constants import (
     SCREENSAVERS_DIR,
     STATE_FILE,
 )
+from claude_panel.session import (
+    get_session_id_from_transcript,
+    session_state_file,
+    set_active_session,
+)
 
 STANDARD_ORDER = ["main", "status", "ambient"]
 
@@ -28,35 +33,52 @@ STATUS_SECTIONS = [
 ]
 
 
-def read_state() -> dict[str, Any]:
-    """Read current panel state."""
-    if not STATE_FILE.exists():
+def _resolve_state_file(session_id: str | None) -> tuple[Path, Path]:
+    """Return (state_file, parent_dir) for a session or the global fallback."""
+    if session_id:
+        sf = session_state_file(session_id)
+        return sf, sf.parent
+    return STATE_FILE, PANEL_DIR
+
+
+def read_state(session_id: str | None = None) -> dict[str, Any]:
+    """Read current panel state for a session (or global fallback)."""
+    state_file, _ = _resolve_state_file(session_id)
+    if not state_file.exists():
         return {}
     try:
-        raw = STATE_FILE.read_text()
+        raw = state_file.read_text()
         return json.loads(raw) if raw.strip() else {}
     except (json.JSONDecodeError, OSError):
         return {}
 
 
-def write_state(state: dict[str, Any]) -> None:
-    """Atomically write state to state.json, clearing loading flag."""
-    PANEL_DIR.mkdir(parents=True, exist_ok=True)
+def write_state(state: dict[str, Any], session_id: str | None = None) -> None:
+    """Atomically write state, clearing loading flag.
+
+    When session_id is provided, writes to the per-session state file
+    and marks this session as active.
+    """
+    state_file, parent_dir = _resolve_state_file(session_id)
+    parent_dir.mkdir(parents=True, exist_ok=True)
     state.pop("loading", None)
     state.pop("loading_message", None)
     state["ts"] = time.time()
 
-    fd, tmp_path = tempfile.mkstemp(dir=str(PANEL_DIR), suffix=".tmp")
+    fd, tmp_path = tempfile.mkstemp(dir=str(parent_dir), suffix=".tmp")
     try:
         with open(fd, "w") as f:
             json.dump(state, f)
-        os.rename(tmp_path, str(STATE_FILE))
+        os.rename(tmp_path, str(state_file))
     except BaseException:
         try:
             os.unlink(tmp_path)
         except OSError:
             pass
         raise
+
+    if session_id:
+        set_active_session(session_id)
 
 
 def ensure_multi(state: dict[str, Any]) -> dict[str, Any]:
@@ -324,9 +346,17 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
     """Main entry point for the Stop hook — updates status screen only."""
     config = read_config()
 
-    # Throttle
+    transcript_path = hook_input.get("transcript_path", "")
+    session_id = get_session_id_from_transcript(transcript_path)
+
+    # Throttle — per-session nudge counter
     every_n = config.get("update_every_n", 1)
-    nudge_file = PANEL_DIR / ".nudge_state"
+    if session_id:
+        nudge_dir = session_state_file(session_id).parent
+        nudge_dir.mkdir(parents=True, exist_ok=True)
+        nudge_file = nudge_dir / ".nudge_state"
+    else:
+        nudge_file = PANEL_DIR / ".nudge_state"
     if every_n > 1:
         count = 0
         if nudge_file.exists():
@@ -342,7 +372,6 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
         if count % every_n != 0:
             return
 
-    transcript_path = hook_input.get("transcript_path", "")
     if not transcript_path:
         logger.info("No transcript path, skipping")
         return
@@ -351,7 +380,7 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
     if not transcript:
         return
 
-    state = read_state()
+    state = read_state(session_id)
     current_status = format_current_status(state)
 
     # Get current mood
@@ -429,8 +458,8 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
                 logger.info(f"Mood: {emoji} {context}")
 
         if changed:
-            write_state(state)
-            logger.info("Panel updated (status + mood)")
+            write_state(state, session_id)
+            logger.info(f"Panel updated (status + mood) session={session_id}")
         else:
             logger.info("No changes needed")
 
