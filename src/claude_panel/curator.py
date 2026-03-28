@@ -243,7 +243,10 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
             return
 
     transcript_path = hook_input.get("transcript_path", "")
+    logger.info(f"Hook input keys: {list(hook_input.keys())}")
+    logger.info(f"Transcript path: {transcript_path!r}")
     if not transcript_path:
+        logger.info("No transcript path, skipping")
         return
 
     transcript = read_transcript_tail(transcript_path)
@@ -321,3 +324,7 @@ def main():
 
     import asyncio
     asyncio.run(run_status_curator(hook_input))
+
+
+if __name__ == "__main__":
+    main()
