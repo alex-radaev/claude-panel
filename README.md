@@ -11,54 +11,69 @@
   <a href="https://github.com/alex-radaev/claude-panel/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/alex-radaev/claude-panel"></a>
 </p>
 
-<p align="center"><img src="demo/split-pane.png" alt="Claude Code + Panel — ambient screensaver running" width="900"></p>
+<img align="right" width="45%" src="demo/screensavers.gif" alt="Ambient screensaver — rain-city">
 
-Claude Code is great, but the conversation scrolls fast. What was the last decision? Which files changed? What's Claude working on right now?
+**Claude Panel** is a persistent TUI that sits next to your Claude Code terminal.
 
-**Claude Panel** is a persistent TUI that sits next to your terminal. Claude decides what to show — summaries, explanations, next steps, diagrams, code highlights, or just a mood emoji. It's a second communication channel that doesn't clutter the conversation.
+Claude decides what to show on the panel — summaries, explanations, code highlights, progress checklists, architecture diagrams, or just a mood emoji. It's a second communication channel that doesn't add noise to the conversation.
+
+- **Main screen** — Claude's canvas. Whatever it thinks is useful right now.
+- **Status screen** — auto-updating dashboard: current task, files changed, decisions.
+- **Ambient screen** — your choice of terminal screensaver.
+
+Two screens managed by Claude. One screen managed by you.
+
+<br clear="right"/>
 
 ---
 
-## Three Screens
+<p align="center"><img src="demo/split-pane.png" alt="Claude Code on the left, Panel with ambient screensaver on the right" width="900"></p>
+<p align="center"><em>Claude Code on the left, Panel with rain-city screensaver on the right</em></p>
 
-| Screen | Managed by | What it shows |
-|--------|-----------|---------------|
-| **Main** | **Claude** | Whatever Claude thinks is useful right now — explanations, key code, architecture diagrams, progress checklists, mood emoji. Claude has full creative control. |
-| **Status** | **Claude** (AI curator) | Structured dashboard: current task, files changed, decisions made. Auto-updates after every response via a lightweight Haiku curator. |
-| **Ambient** | **You** | Terminal screensaver of your choice. Plays when nothing else needs your attention. |
+## How It Works
 
-The key idea: **Claude manages the content, you manage the screensaver.** The main and status screens update automatically — Claude reads the conversation, decides what's worth pinning on screen, and writes it. No manual commands needed.
+Claude Code is great, but the conversation scrolls fast. What was the last decision? Which files changed? What's Claude working on right now?
+
+Claude Panel answers all of that **automatically**. No manual commands needed:
+
+1. **After every response**, a lightweight AI curator (Haiku) reads the conversation and updates the **status screen** — current task, files touched, decisions made.
+2. **Claude spawns background agents** that update the **main screen** with whatever content is worth pinning — code snippets, diagrams, mood, next steps. Zero conversation noise.
+3. **The viewer polls** the state file every 300ms and re-renders instantly.
 
 ### Main Screen — Claude's Canvas
 
-Claude uses the main screen to show you whatever is most relevant:
+<img align="right" width="45%" src="demo/main-screen.png" alt="Main screen with rich content sections">
 
-- Working on auth? It shows the key function signature and a fire emoji
+Claude uses this screen to show you whatever is most relevant:
+
+- Working on auth? The key function signature and a fire emoji
 - Debugging? The error message and current hypothesis
 - Multi-step task? A progress checklist with checked items
-- Just vibing? A mood emoji
+- Just chatting? A mood emoji that matches the vibe
 
-<p align="center"><img src="demo/main-screen.png" alt="Main screen with rich content" width="600"></p>
+Claude has full creative control. It picks the content, the format, and when to update.
+
+<br clear="right"/>
 
 ### Status Screen — Structured Dashboard
 
-After every Claude response, a lightweight AI curator reads the conversation and updates three fields:
+<img align="right" width="45%" src="demo/status-screen.png" alt="Status screen with task, files, decisions">
+
+Three fields, auto-updated after every Claude response:
 
 - **Current Task** — what Claude is working on right now
 - **Files Changed** — which files were touched and why
 - **Decisions** — non-obvious choices made and the reasoning
 
-This happens automatically via a Stop hook. Zero effort from you.
+This runs via a Stop hook + Haiku LLM. Zero effort from you.
 
-<p align="center"><img src="demo/status-screen.png" alt="Status screen dashboard" width="600"></p>
+<br clear="right"/>
 
 ### Ambient Screen — Your Screensaver
 
 Eight built-in terminal animations. Navigate with arrow keys or `panel(show="ambient")`.
 
-<p align="center"><img src="demo/screensavers.gif" alt="Screensaver showcase" width="600"></p>
-
-`banquet` | `city-lights` | `dvd-bounce` | `matrix` | `noir` | `rain-city` | `space-flight` | `tokyo-drift`
+`rain-city` | `tokyo-drift` | `city-lights` | `matrix` | `noir` | `banquet` | `dvd-bounce` | `space-flight`
 
 Screensavers are plain Python scripts that draw to a Rich canvas. [Creating your own takes ~10 lines.](CONTRIBUTING.md#creating-a-screensaver)
 
@@ -69,7 +84,8 @@ Screensavers are plain Python scripts that draw to a Rich canvas. [Creating your
 claude plugin install claude-panel@claude-panel
 ```
 
-Or manually:
+<details>
+<summary>Manual installation</summary>
 
 ```bash
 git clone https://github.com/alex-radaev/claude-panel
@@ -78,6 +94,8 @@ uv sync
 ```
 
 Then add to your MCP config (`~/.claude/settings.json` or `.mcp.json`).
+
+</details>
 
 ## Usage
 
@@ -106,7 +124,7 @@ panel(screensaver="tokyo-drift")   # change screensaver
 | `<-` `->` | Cycle screens |
 | `c` | Clear panel |
 
-## How It Works
+## Architecture
 
 ```
  Claude Code session              iTerm2 Split Pane
@@ -122,10 +140,6 @@ panel(screensaver="tokyo-drift")   # change screensaver
                      state.json
             ~/.claude-panel/sessions/<id>/
 ```
-
-1. **Claude responds** — a Stop hook fires and runs the AI curator (Haiku). It reads the conversation, decides what changed, and updates the status screen.
-2. **Claude spawns a background agent** — updates the main screen with whatever content Claude thinks is worth showing. This runs silently with zero conversation noise.
-3. **The viewer polls** the session state file every 300ms and re-renders on change.
 
 **Session isolation:** Each Claude Code session gets its own state. Run multiple sessions — they don't interfere. The viewer tracks whichever session is active.
 
@@ -143,7 +157,7 @@ panel(screensaver="tokyo-drift")   # change screensaver
 
 ## Contributing
 
-Contributions welcome — especially new screensavers. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, including a screensaver template.
+Contributions welcome — especially new screensavers. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, including a screensaver template that gets you started in ~10 lines of Python.
 
 ## License
 
