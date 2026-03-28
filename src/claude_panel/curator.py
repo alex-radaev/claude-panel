@@ -204,14 +204,17 @@ DEFAULT_CONFIG = {
 }
 
 STATUS_PROMPT = """\
-You are a status dashboard curator. You update a structured dashboard panel \
-that shows: current task, files changed, and decisions made.
-
-You ONLY update the status screen — never touch the main screen.
+You are a panel curator. You update two things:
+1. **Status screen** — task, files changed, decisions
+2. **Main screen mood** — pick an emoji that reflects the session vibe
 
 ## Current status content
 
 {current_status}
+
+## Current mood
+
+{current_mood}
 
 ## Recent conversation
 
@@ -223,14 +226,25 @@ Extract from the conversation:
 1. **task** — What is the current task/goal? One line.
 2. **files** — What files have been changed or discussed? Bullet list with one-line descriptions.
 3. **decisions** — What non-obvious decisions were made and why? Bullet list.
+4. **emoji** — Pick ONE emoji that best matches the current vibe.
+5. **context** — One-line description to show under the emoji.
+
+### Emoji vocabulary (pick exactly one):
+🔥 = on fire, fast progress    🤔 = thinking, investigating
+🎯 = focused, clear goal       🎉 = completed something, celebration
+🏗️ = building, creating        🐛 = fixing bugs, debugging
+💡 = insight, discovery         ☕ = idle, chill, casual chat
+⚡ = urgent, critical           🧪 = testing, verifying
+🎨 = designing, planning       📚 = reading docs, learning
+🚀 = shipping, deploying       🔧 = refactoring, cleanup
 
 Return ONLY valid JSON, no markdown fences:
 
-{{"task": "...", "files": "- file.py — what changed", "decisions": "- decision — why"}}
+{{"task": "...", "files": "...", "decisions": "...", "emoji": "🔥", "context": "Making fast progress"}}
 
-- Set a field to null if it hasn't changed from the current status.
-- Keep each field short and scannable.
-- If nothing meaningful changed, return {{"task": null, "files": null, "decisions": null}}
+- Set status fields to null if unchanged.
+- Always include emoji and context — these update the main screen mood.
+- If truly idle with nothing happening, use ☕ with a chill context.
 """
 
 
@@ -309,8 +323,13 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
     state = read_state()
     current_status = format_current_status(state)
 
+    # Get current mood
+    main_screen = state.get("screens", {}).get("main", {})
+    current_mood = f"{main_screen.get('emoji', '?')} — {main_screen.get('context', 'not set')}" if main_screen.get("emoji") else "Not set"
+
     prompt = STATUS_PROMPT.format(
         current_status=current_status,
+        current_mood=current_mood,
         transcript=transcript,
     )
 
@@ -355,11 +374,19 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
                 state = update_status_section(state, field, value)
                 changed = True
 
+        # Apply mood/emoji update
+        emoji = updates.get("emoji")
+        context = updates.get("context", "")
+        if emoji and context:
+            state = update_mood(state, emoji, context)
+            changed = True
+            logger.info(f"Mood: {emoji} {context}")
+
         if changed:
             write_state(state)
-            logger.info("Status screen updated")
+            logger.info("Panel updated (status + mood)")
         else:
-            logger.info("No status changes needed")
+            logger.info("No changes needed")
 
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse response: {e}\n{result_text[:300]}")
