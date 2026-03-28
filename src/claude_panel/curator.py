@@ -88,6 +88,9 @@ while reading Claude's response.
    - **decisions**: What non-obvious decisions have been made and why?
 4. Which screen should be **active**? Show main when there's useful context, \
 ambient when idle or casual chat.
+5. Should the **screensaver** change? If the user asks to switch the screensaver \
+(e.g., "switch to matrix", "rainy vibes", "show me space-flight"), set the \
+`ambient` field. Available screensavers: {available_screensavers}
 
 ## Response format
 
@@ -105,12 +108,14 @@ Return ONLY valid JSON, no markdown fences:
     "task": "Current task description or null to keep unchanged",
     "files": "File list or null to keep unchanged",
     "decisions": "Decisions list or null to keep unchanged"
-  }}
+  }},
+  "ambient": "screensaver-name or null to keep unchanged"
 }}
 
 - Set `"update": false` if nothing meaningful changed — do not update just to update.
 - Omit `main` entirely if the main screen doesn't need to change.
 - Set individual status fields to `null` to keep them unchanged.
+- Set `ambient` to a screensaver name to switch it, or `null` to keep current.
 - `active` can be "main", "status", or "ambient".
 - Section IDs must be lowercase with hyphens only (no apostrophes, spaces, etc.).
 - Keep content short and scannable — the developer glances at this, not reads essays.
@@ -230,10 +235,16 @@ async def call_curator(
     config: dict[str, Any],
 ) -> dict[str, Any] | None:
     """Call the configured model with the curator prompt."""
+    # List available screensavers
+    available = []
+    if SCREENSAVERS_DIR.exists():
+        available = sorted(p.stem for p in SCREENSAVERS_DIR.glob("*.py"))
+
     prompt = CURATOR_PROMPT.format(
         current_state=current_state_str,
         transcript=transcript,
         user_prompt=user_prompt,
+        available_screensavers=", ".join(available) if available else "none",
     )
 
     model = config.get("model", DEFAULT_CONFIG["model"])
@@ -325,6 +336,17 @@ def apply_updates(updates: dict[str, Any], state: dict[str, Any]) -> dict[str, A
         screens["status"] = status_screen
         if "status" not in order:
             order.append("status")
+
+    # Update ambient screensaver if requested
+    ambient_name = updates.get("ambient")
+    if ambient_name and isinstance(ambient_name, str):
+        saver_path = SCREENSAVERS_DIR / f"{ambient_name}.py"
+        if saver_path.exists():
+            code = saver_path.read_text()
+            screens["ambient"] = {"type": "screensaver", "name": ambient_name, "code": code}
+            if "ambient" not in order:
+                order.append("ambient")
+            logger.info(f"Switched screensaver to '{ambient_name}'")
 
     # Set active screen
     active = updates.get("active")
