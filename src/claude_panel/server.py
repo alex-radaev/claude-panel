@@ -9,7 +9,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from claude_panel.constants import PANEL_DIR, STATE_FILE
+from claude_panel.constants import PANEL_DIR, SCREENSAVERS_DIR, STATE_FILE
 
 mcp = FastMCP(
     "claude-panel",
@@ -83,6 +83,59 @@ async def panel_script(code: str, title: str = "Animation") -> str:
     """
     _write_state({"mode": "script", "script": {"code": code, "title": title}})
     return f"Script '{title}' sent to panel viewer."
+
+
+@mcp.tool()
+async def screensaver_save(name: str, code: str) -> str:
+    """Save a screensaver animation script.
+
+    The code should represent one cycle of the animation. The viewer will
+    loop it continuously until interrupted by panel() or panel_script().
+
+    The script receives the same namespace as panel_script:
+      canvas, sleep, width, height, Text, Panel, Table, etc.
+
+    Write the code as a single pass — the viewer wraps it in a loop.
+
+    Example:
+      screensaver_save(
+        name="matrix",
+        code="import random\\nfor _ in range(height):\\n    line = ''.join(random.choice(' .o0') for _ in range(width))\\n    canvas.write(Text(line, style='green'))\\nawait sleep(0.1)\\ncanvas.clear()"
+      )
+    """
+    SCREENSAVERS_DIR.mkdir(parents=True, exist_ok=True)
+    path = SCREENSAVERS_DIR / f"{name}.py"
+    path.write_text(code)
+    return f"Screensaver '{name}' saved."
+
+
+@mcp.tool()
+async def screensaver_play(name: str) -> str:
+    """Play a saved screensaver by name. Loops until interrupted.
+
+    Use screensaver_list() to see available screensavers.
+    """
+    path = SCREENSAVERS_DIR / f"{name}.py"
+    if not path.exists():
+        available = [p.stem for p in SCREENSAVERS_DIR.glob("*.py")] if SCREENSAVERS_DIR.exists() else []
+        return f"Screensaver '{name}' not found. Available: {', '.join(available) or 'none'}"
+
+    code = path.read_text()
+    _write_state({"mode": "screensaver", "screensaver": {"name": name, "code": code}})
+    return f"Screensaver '{name}' playing."
+
+
+@mcp.tool()
+async def screensaver_list() -> str:
+    """List all saved screensavers."""
+    if not SCREENSAVERS_DIR.exists():
+        return "No screensavers saved yet."
+
+    names = sorted(p.stem for p in SCREENSAVERS_DIR.glob("*.py"))
+    if not names:
+        return "No screensavers saved yet."
+
+    return f"Available screensavers: {', '.join(names)}"
 
 
 def main():

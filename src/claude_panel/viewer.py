@@ -104,6 +104,7 @@ class PanelViewer(App):
     last_ts: reactive[float] = reactive(0.0)
     current_mode: reactive[str] = reactive("waiting")
     _canvas_counter: int = 0
+    _stop_screensaver: bool = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -134,10 +135,16 @@ class PanelViewer(App):
             self.last_ts = ts
             mode = data.get("mode", "sections")
 
+            # Stop any running screensaver when mode changes
+            if self.current_mode == "screensaver" and mode != "screensaver":
+                self._stop_screensaver = True
+
             if mode == "sections":
                 await self._render_sections(data.get("sections", []))
             elif mode == "script":
                 await self._render_script(data.get("script", {}))
+            elif mode == "screensaver":
+                await self._render_screensaver(data.get("screensaver", {}))
 
             # Update status bar
             elapsed = time.time() - ts
@@ -193,6 +200,60 @@ class PanelViewer(App):
 
         # Execute the script in a worker
         self.run_worker(self._execute_script(canvas, code), exclusive=True)
+
+    async def _render_screensaver(self, screensaver: dict[str, str]) -> None:
+        """Render screensaver mode — loop a script continuously."""
+        self.current_mode = "screensaver"
+        self._stop_screensaver = False
+        content = self.query_one("#content-area", VerticalScroll)
+        await content.remove_children()
+
+        name = screensaver.get("name", "Screensaver")
+        code = screensaver.get("code", "")
+
+        self._canvas_counter += 1
+        canvas = RichLog(id=f"script-canvas-{self._canvas_counter}", highlight=True, markup=True)
+        canvas.border_title = f"~ {name} ~"
+        canvas.styles.border = ("round", "ansi_bright_magenta")
+        canvas.styles.padding = (0, 1)
+        canvas.styles.height = "1fr"
+        await content.mount(canvas)
+
+        self.query_one("#status-bar", Static).update(f"Screensaver: {name}")
+
+        # Execute the script in a looping worker
+        self.run_worker(self._execute_screensaver_loop(canvas, code), exclusive=True)
+
+    async def _execute_screensaver_loop(self, canvas: RichLog, code: str) -> None:
+        """Loop a screensaver script until interrupted."""
+        term_width = self.size.width - 8
+        term_height = self.size.height - 6
+        namespace: dict[str, Any] = {
+            "canvas": canvas,
+            "sleep": asyncio.sleep,
+            "width": max(term_width, 20),
+            "height": max(term_height, 10),
+            "Text": Text,
+            "Panel": RichPanel,
+            "Table": Table,
+            "Columns": Columns,
+            "Syntax": Syntax,
+        }
+
+        try:
+            wrapped = "async def __script__():\n"
+            for line in code.splitlines():
+                wrapped += f"    {line}\n"
+            exec(compile(wrapped, "<screensaver>", "exec"), namespace)
+
+            while not self._stop_screensaver:
+                canvas.clear()
+                await namespace["__script__"]()
+                await asyncio.sleep(0.1)  # brief pause between loops
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            canvas.write(Text(f"\n[Error] {type(e).__name__}: {e}", style="bold red"))
 
     async def _execute_script(self, canvas: RichLog, code: str) -> None:
         """Execute user script with canvas and rich library available."""
