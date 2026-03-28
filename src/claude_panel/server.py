@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import time
 from typing import Any
@@ -136,6 +137,43 @@ async def screensaver_list() -> str:
         return "No screensavers saved yet."
 
     return f"Available screensavers: {', '.join(names)}"
+
+
+OPEN_APPLESCRIPT = """
+tell application "iTerm2"
+    tell current session of current tab of current window
+        set newSession to (split vertically with default profile)
+        tell newSession
+            write text "cd {project_dir} && uv run claude-panel"
+        end tell
+    end tell
+end tell
+"""
+
+
+@mcp.tool()
+async def panel_open() -> str:
+    """Open the panel viewer in an iTerm2 vertical split pane.
+
+    Creates a new vertical split in the current iTerm2 window and starts
+    the Textual viewer. Call this before using panel() or panel_script().
+    """
+    project_dir = str(PANEL_DIR.parent / "Desktop" / "Projects" / "claude-panel")
+    # Use a more robust path detection
+    import importlib.util
+    spec = importlib.util.find_spec("claude_panel")
+    if spec and spec.origin:
+        from pathlib import Path
+        project_dir = str(Path(spec.origin).parent.parent.parent)
+
+    script = OPEN_APPLESCRIPT.format(project_dir=project_dir)
+    try:
+        subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
+        return "Panel viewer opened in iTerm2 split pane."
+    except subprocess.CalledProcessError as e:
+        return f"Failed to open panel: {e.stderr.decode()}"
+    except FileNotFoundError:
+        return "osascript not found — panel_open() only works on macOS with iTerm2."
 
 
 def main():
