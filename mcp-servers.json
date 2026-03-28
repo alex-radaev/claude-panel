@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "claude-panel": {
+      "command": "uv",
+      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT}", "claude-panel-server"]
+    }
+  }
+}

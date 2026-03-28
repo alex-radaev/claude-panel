@@ -1,4 +1,4 @@
-"""MCP server exposing panel() and panel_script() tools."""
+"""MCP server exposing panel tools with 3-screen model: main + status + ambient."""
 
 from __future__ import annotations
 
@@ -12,13 +12,86 @@ from fastmcp import FastMCP
 
 from claude_panel.constants import PANEL_DIR, SCREENSAVERS_DIR, STATE_FILE
 
+# ── Standard screen ordering ──
+# main is Claude's free-form display, status is the structured dashboard,
+# ambient is the screensaver. Custom screens go after these.
+STANDARD_ORDER = ["main", "status", "ambient"]
+
+
 mcp = FastMCP(
     "claude-panel",
-    instructions=(
-        "Use the panel() tool to show persistent context to the user in a side panel. "
-        "Use panel_script() to run animated or dynamic visualizations."
-    ),
+    instructions="""\
+You manage a persistent side panel with three standard screens:
+
+## Screens
+
+1. **main** — Your free-form canvas. Show whatever is most relevant right now: \
+a plan, progress, explanation, debug context. Replace the content freely as focus shifts.
+   ```python
+   panel(sections=[
+       {"id": "goal", "title": "Goal", "content": "Add user auth"},
+       {"id": "approach", "title": "Approach", "content": "JWT + middleware"},
+   ])
+   ```
+
+2. **status** — Structured session dashboard. Always shows: current task, files \
+changed, and decisions made. Update individual sections incrementally as you work:
+   ```python
+   panel(screen="status", section="task", content="Implementing multi-screen panel")
+   panel(screen="status", section="files", content="- server.py — multi-screen API\\n- viewer.py — screen bar")
+   panel(screen="status", section="decisions", content="- Chose 3-screen model: main + status + ambient")
+   ```
+
+3. **ambient** — The user's screensaver. Show when idle:
+   ```python
+   panel(show="ambient")
+   ```
+
+## Workflow
+
+1. At session start, set up ambient: `panel(screensaver="tokyo-drift")`
+2. Initialize status sections: task, files, decisions
+3. Use `panel(sections=[...])` freely to show context on main — this auto-shows main
+4. Update status incrementally as you edit files, make decisions
+5. Switch to ambient when idle: `panel(show="ambient")`
+
+## When to update main
+
+| Situation              | Content                                                |
+|-----------------------|--------------------------------------------------------|
+| Starting a task       | Goal, approach, key files                               |
+| Making progress       | Checklist with [x] items                                |
+| Explaining something  | Diagrams, architecture, data structures                 |
+| Debugging             | Hypothesis, evidence, stack traces                      |
+| Idle / done           | `panel(show="ambient")`                                 |
+
+## When to update status
+
+- **task**: When starting or switching tasks
+- **files**: After editing a file (append the filename + what changed)
+- **decisions**: After making a non-obvious choice (what + why)
+
+## Behavior
+- `panel(sections=[...])` updates main and shows it — use this most of the time
+- `panel(screen="status", section=ID, content=TEXT)` updates one status section
+- Don't update every message — only when context meaningfully changed
+- Keep content short and scannable
+- User can arrow-key browse between screens
+""",
 )
+
+# ── State helpers ───────────────────────────────────────────────────
+
+
+def _read_state() -> dict[str, Any]:
+    """Read current state from the shared JSON file."""
+    if not STATE_FILE.exists():
+        return {}
+    try:
+        raw = STATE_FILE.read_text()
+        return json.loads(raw) if raw.strip() else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
 
 
 def _write_state(data: dict[str, Any]) -> None:
@@ -26,12 +99,10 @@ def _write_state(data: dict[str, Any]) -> None:
     PANEL_DIR.mkdir(parents=True, exist_ok=True)
     data["ts"] = time.time()
 
-    # Atomic write: temp file + rename
     fd, tmp_path = tempfile.mkstemp(dir=PANEL_DIR, suffix=".tmp")
     try:
         with open(fd, "w") as f:
             json.dump(data, f)
-        # os.rename is atomic on the same filesystem
         import os
         os.rename(tmp_path, STATE_FILE)
     except BaseException:
@@ -43,44 +114,190 @@ def _write_state(data: dict[str, Any]) -> None:
         raise
 
 
+def _ensure_multi(state: dict[str, Any]) -> dict[str, Any]:
+    """Ensure state is in multi-screen mode, migrating if needed."""
+    if state.get("mode") == "multi":
+        return state
+    return {"mode": "multi", "screens": {}, "screen_order": [], "active": None}
+
+
+def _ensure_screen_order(order: list[str]) -> list[str]:
+    """Ensure standard screens come first in the expected order."""
+    # Pull out standard screens that exist
+    standard = [s for s in STANDARD_ORDER if s in order]
+    custom = [s for s in order if s not in STANDARD_ORDER]
+    return standard + custom
+
+
+# Default sections for the status screen
+STATUS_SECTIONS = [
+    {"id": "task", "title": "Current Task", "content": "*Not set*"},
+    {"id": "files", "title": "Files Changed", "content": "*None yet*"},
+    {"id": "decisions", "title": "Decisions", "content": "*None yet*"},
+]
+
+
+# ── Panel tools ─────────────────────────────────────────────────────
+
+
 @mcp.tool()
-async def panel(sections: list[dict[str, str]]) -> str:
-    """Update the context panel with static content.
+async def panel(
+    sections: list[dict[str, str]] | None = None,
+    screen: str | None = None,
+    section: str | None = None,
+    content: str | None = None,
+    screensaver: str | None = None,
+    show: str | None = None,
+    clear: str | None = None,
+) -> str:
+    """Manage the panel's three screens: main (free-form), status (structured), ambient (screensaver).
 
-    Each section is a dict with:
-      - id: unique identifier (e.g. "goal", "progress", "assumptions")
-      - title: display title
-      - content: markdown string (supports headers, lists, checkboxes, code blocks)
+    Args:
+        sections: List of section dicts with id, title, content (markdown).
+                  Updates the "main" screen by default, or a named screen if `screen` is set.
+        screen: Target screen name. Defaults to "main" for sections.
+        section: Update a single section by ID on a screen (use with `content`).
+                 Most useful for status: panel(screen="status", section="files", content="...")
+        content: New content for the section specified by `section`.
+        screensaver: Set up the ambient screen with a saved screensaver name.
+        show: Switch the visible screen (e.g., "ambient", "status", "main").
+        clear: Remove a custom screen by name. Cannot clear standard screens.
 
-    Pass an empty list to clear the panel.
-
-    Example:
-      panel(sections=[
-        {"id": "goal", "title": "Goal", "content": "Build auth middleware"},
-        {"id": "progress", "title": "Progress", "content": "- [x] Read code\\n- [ ] Write tests"},
-      ])
+    Common patterns:
+      panel(sections=[...])                                          # update main, show it
+      panel(screen="status", section="files", content="- server.py") # update one status section
+      panel(screensaver="tokyo-drift")                               # set up ambient
+      panel(show="ambient")                                          # switch to screensaver
     """
-    _write_state({"mode": "sections", "sections": sections})
-    n = len(sections)
-    return f"Panel updated with {n} section{'s' if n != 1 else ''}." if n else "Panel cleared."
+    state = _read_state()
+
+    # ── Handle clear ──
+    if clear is not None:
+        if clear in STANDARD_ORDER:
+            return f"Cannot clear standard screen '{clear}'. Use panel(screen='{clear}', sections=[...]) to update it instead."
+        if state.get("mode") != "multi" or "screens" not in state:
+            return f"No screen '{clear}' to remove."
+        screens = state.get("screens", {})
+        order = state.get("screen_order", [])
+        if clear not in screens:
+            return f"Screen '{clear}' not found. Available: {', '.join(order) or 'none'}"
+        del screens[clear]
+        order = [s for s in order if s != clear]
+        state["screens"] = screens
+        state["screen_order"] = order
+        if state.get("active") == clear:
+            state["active"] = order[0] if order else None
+        _write_state(state)
+        return f"Screen '{clear}' removed. Showing: {state.get('active')}"
+
+    # ── Handle show (switch active screen) ──
+    if show is not None:
+        if state.get("mode") != "multi":
+            return f"No screens yet. Use panel(sections=[...]) to get started."
+        if show not in state.get("screens", {}):
+            avail = ", ".join(state.get("screen_order", []))
+            return f"Screen '{show}' not found. Available: {avail or 'none'}"
+        state["active"] = show
+        _write_state(state)
+        return f"Showing screen '{show}'."
+
+    # ── Handle screensaver (ambient screen) ──
+    if screensaver is not None:
+        target = screen if screen is not None else "ambient"
+        path = SCREENSAVERS_DIR / f"{screensaver}.py"
+        if not path.exists():
+            available = [p.stem for p in SCREENSAVERS_DIR.glob("*.py")] if SCREENSAVERS_DIR.exists() else []
+            return f"Screensaver '{screensaver}' not found. Available: {', '.join(available) or 'none'}"
+        code = path.read_text()
+        state = _ensure_multi(state)
+        screens = state.get("screens", {})
+        order = state.get("screen_order", [])
+        screens[target] = {"type": "screensaver", "name": screensaver, "code": code}
+        if target not in order:
+            order.append(target)
+        state["screens"] = screens
+        state["screen_order"] = _ensure_screen_order(order)
+        # Don't auto-show ambient — keep current view
+        if not state.get("active"):
+            state["active"] = target
+        _write_state(state)
+        return f"Ambient screen set to screensaver '{screensaver}'."
+
+    # ── Handle single section update (incremental) ──
+    if section is not None and content is not None:
+        target = screen if screen is not None else "status"
+        state = _ensure_multi(state)
+        screens = state.get("screens", {})
+        order = state.get("screen_order", [])
+
+        # Get or initialize the target screen
+        screen_data = screens.get(target)
+        if screen_data is None or screen_data.get("type") != "sections":
+            # Initialize status with default sections, others with empty
+            if target == "status":
+                screen_data = {"type": "sections", "sections": [dict(s) for s in STATUS_SECTIONS]}
+            else:
+                screen_data = {"type": "sections", "sections": []}
+
+        # Find and update or append the section
+        existing = screen_data.get("sections", [])
+        found = False
+        for s in existing:
+            if s.get("id") == section:
+                s["content"] = content
+                found = True
+                break
+        if not found:
+            # Auto-title from section ID
+            title = section.replace("_", " ").replace("-", " ").title()
+            existing.append({"id": section, "title": title, "content": content})
+        screen_data["sections"] = existing
+
+        screens[target] = screen_data
+        if target not in order:
+            order.append(target)
+        state["screens"] = screens
+        state["screen_order"] = _ensure_screen_order(order)
+        # Don't auto-switch when updating status — stay on current screen
+        if not state.get("active"):
+            state["active"] = target
+        _write_state(state)
+        return f"Updated '{section}' on {target} screen."
+
+    # ── Handle full sections update ──
+    if sections is not None:
+        target = screen if screen is not None else "main"
+        state = _ensure_multi(state)
+        screens = state.get("screens", {})
+        order = state.get("screen_order", [])
+        screens[target] = {"type": "sections", "sections": sections}
+        if target not in order:
+            order.append(target)
+        state["screens"] = screens
+        state["screen_order"] = _ensure_screen_order(order)
+        # Auto-show when updating main or a named screen
+        state["active"] = target
+        _write_state(state)
+        n = len(order)
+        label = "Main screen" if target == "main" else f"Screen '{target}'"
+        return f"{label} updated ({len(sections)} sections) and shown. {n} screen{'s' if n != 1 else ''} total."
+
+    return "Nothing to update. Pass sections, section+content, screensaver, show, or clear."
 
 
 @mcp.tool()
 async def panel_script(code: str, title: str = "Animation") -> str:
     """Run a Python script in the panel viewer for animated/dynamic content.
 
-    The script executes inside the Textual viewer and receives:
-      - canvas: a RichLog widget — call canvas.write(...) to display content
-      - sleep: an async sleep function for timing animations
-      - width: int — available width in characters (fills the panel)
-      - height: int — available height in lines (fills the panel)
-      - Rich library classes: Text, Panel, Table, Columns, Syntax, etc.
+    This replaces all screens with a one-off animation. Use screensaver screens
+    (via panel(screensaver=...)) for persistent ambient animations.
 
-    Example:
-      panel_script(
-        code="for i in range(5):\\n    canvas.write(f'Step {i+1}')\\n    await sleep(0.5)",
-        title="Demo"
-      )
+    The script executes inside the Textual viewer and receives:
+      - canvas: a RichLog widget -- call canvas.write(...) to display content
+      - sleep: an async sleep function for timing animations
+      - width: int -- available width in characters
+      - height: int -- available height in lines
+      - Rich library classes: Text, Panel, Table, Columns, Syntax, etc.
     """
     _write_state({"mode": "script", "script": {"code": code, "title": title}})
     return f"Script '{title}' sent to panel viewer."
@@ -91,18 +308,10 @@ async def screensaver_save(name: str, code: str) -> str:
     """Save a screensaver animation script.
 
     The code should represent one cycle of the animation. The viewer will
-    loop it continuously until interrupted by panel() or panel_script().
+    loop it continuously. The script receives the same namespace as panel_script:
+    canvas, sleep, width, height, Text, Panel, Table, etc.
 
-    The script receives the same namespace as panel_script:
-      canvas, sleep, width, height, Text, Panel, Table, etc.
-
-    Write the code as a single pass — the viewer wraps it in a loop.
-
-    Example:
-      screensaver_save(
-        name="matrix",
-        code="import random\\nfor _ in range(height):\\n    line = ''.join(random.choice(' .o0') for _ in range(width))\\n    canvas.write(Text(line, style='green'))\\nawait sleep(0.1)\\ncanvas.clear()"
-      )
+    Write the code as a single pass -- the viewer wraps it in a loop.
     """
     SCREENSAVERS_DIR.mkdir(parents=True, exist_ok=True)
     path = SCREENSAVERS_DIR / f"{name}.py"
@@ -114,7 +323,7 @@ async def screensaver_save(name: str, code: str) -> str:
 async def screensaver_play(name: str) -> str:
     """Play a saved screensaver by name. Loops until interrupted.
 
-    Use screensaver_list() to see available screensavers.
+    Prefer panel(screensaver=NAME) to make it the ambient screen.
     """
     path = SCREENSAVERS_DIR / f"{name}.py"
     if not path.exists():
@@ -159,7 +368,6 @@ async def panel_open() -> str:
     the Textual viewer. Call this before using panel() or panel_script().
     """
     project_dir = str(PANEL_DIR.parent / "Desktop" / "Projects" / "claude-panel")
-    # Use a more robust path detection
     import importlib.util
     spec = importlib.util.find_spec("claude_panel")
     if spec and spec.origin:
@@ -173,7 +381,7 @@ async def panel_open() -> str:
     except subprocess.CalledProcessError as e:
         return f"Failed to open panel: {e.stderr.decode()}"
     except FileNotFoundError:
-        return "osascript not found — panel_open() only works on macOS with iTerm2."
+        return "osascript not found -- panel_open() only works on macOS with iTerm2."
 
 
 def main():

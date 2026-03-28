@@ -1,4 +1,4 @@
-"""Textual TUI viewer for the Claude context panel."""
+"""Textual TUI viewer for the Claude context panel with multi-screen support."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class SectionPanel(Static):
         yield Markdown(self._content, id=f"md-{self.id}")
 
     def on_mount(self) -> None:
-        self.border_title = self._title  # noqa: Textual reactive
+        self.border_title = self._title
         self.styles.border = ("round", "ansi_bright_cyan")
         self.styles.padding = (0, 1)
         self.styles.margin = (0, 0, 1, 0)
@@ -51,6 +51,29 @@ class WaitingMessage(Static):
     def on_mount(self) -> None:
         self.styles.text_align = "center"
         self.styles.margin = (4, 2)
+
+
+class ScreenBar(Static):
+    """Shows available screens with the active one highlighted."""
+
+    def __init__(self, screens: list[str], active: str) -> None:
+        super().__init__(id="screen-bar")
+        self._screens = screens
+        self._active = active
+
+    def render(self) -> Text:
+        parts = []
+        for name in self._screens:
+            if name == self._active:
+                parts.append(f"[bold bright_cyan] \u25cf {name} [/]")
+            else:
+                parts.append(f"[dim] \u25cb {name} [/]")
+        return Text.from_markup("  ".join(parts))
+
+    def on_mount(self) -> None:
+        self.styles.text_align = "center"
+        self.styles.height = 1
+        self.styles.margin = (0, 0, 1, 0)
 
 
 class PanelViewer(App):
@@ -82,29 +105,34 @@ class PanelViewer(App):
         margin-bottom: 1;
     }
 
-    #script-container {
-        padding: 1 2;
-    }
-
-    #script-canvas {
-        height: 1fr;
-    }
-
     WaitingMessage {
         height: 1fr;
         content-align: center middle;
+    }
+
+    ScreenBar {
+        height: 1;
+        margin-bottom: 1;
+        text-align: center;
     }
     """
 
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("c", "clear", "Clear"),
+        ("left", "prev_screen", "Prev"),
+        ("right", "next_screen", "Next"),
     ]
 
     last_ts: reactive[float] = reactive(0.0)
     current_mode: reactive[str] = reactive("waiting")
     _canvas_counter: int = 0
     _stop_screensaver: bool = False
+
+    # Multi-screen state
+    _screens: dict[str, Any] = {}
+    _screen_order: list[str] = []
+    _active_screen: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -135,16 +163,20 @@ class PanelViewer(App):
             self.last_ts = ts
             mode = data.get("mode", "sections")
 
-            # Stop any running screensaver when mode changes
-            if self.current_mode == "screensaver" and mode != "screensaver":
+            # Stop any running screensaver when mode changes away
+            if self.current_mode in ("screensaver", "multi") and mode not in ("screensaver", "multi"):
                 self._stop_screensaver = True
 
-            if mode == "sections":
+            if mode == "multi":
+                await self._handle_multi_screen(data)
+            elif mode == "sections":
                 await self._render_sections(data.get("sections", []))
             elif mode == "script":
                 await self._render_script(data.get("script", {}))
             elif mode == "screensaver":
                 await self._render_screensaver(data.get("screensaver", {}))
+            elif mode == "waiting":
+                await self._show_waiting()
 
             # Update status bar
             elapsed = time.time() - ts
@@ -155,17 +187,90 @@ class PanelViewer(App):
             self.query_one("#status-bar", Static).update(f"Last updated: {ago}")
 
         except (json.JSONDecodeError, KeyError, OSError):
-            pass  # Transient errors during atomic write
+            pass
+
+    async def _handle_multi_screen(self, data: dict[str, Any]) -> None:
+        """Handle multi-screen mode — render the active screen."""
+        self._screens = data.get("screens", {})
+        self._screen_order = data.get("screen_order", [])
+        new_active = data.get("active")
+
+        if not self._screen_order:
+            await self._show_waiting()
+            return
+
+        # Determine which screen to show
+        if new_active and new_active in self._screens:
+            self._active_screen = new_active
+        elif self._active_screen not in self._screens:
+            self._active_screen = self._screen_order[0]
+
+        # Stop screensaver if switching away from a screensaver screen
+        screen_data = self._screens.get(self._active_screen)
+        if screen_data and screen_data.get("type") != "screensaver":
+            self._stop_screensaver = True
+
+        self.current_mode = "multi"
+        await self._render_active_screen()
+
+    async def _render_active_screen(self) -> None:
+        """Render whichever screen is currently active."""
+        if not self._active_screen or self._active_screen not in self._screens:
+            return
+
+        screen_data = self._screens[self._active_screen]
+        screen_type = screen_data.get("type", "sections") if isinstance(screen_data, dict) else "sections"
+
+        content = self.query_one("#content-area", VerticalScroll)
+        await content.remove_children()
+
+        # Screen bar (only if multiple screens)
+        if len(self._screen_order) > 1:
+            bar = ScreenBar(self._screen_order, self._active_screen)
+            await content.mount(bar)
+
+        if screen_type == "screensaver":
+            await self._render_screensaver_inline(content, screen_data)
+        else:
+            sections = screen_data.get("sections", []) if isinstance(screen_data, dict) else screen_data
+            if not sections:
+                await content.mount(WaitingMessage())
+            else:
+                for section in sections:
+                    sid = section.get("id", "unknown")
+                    title = section.get("title", "Untitled")
+                    body = section.get("content", "")
+                    panel = SectionPanel(f"{self._active_screen}-{sid}", title, body)
+                    await content.mount(panel)
+
+    async def _render_screensaver_inline(self, container: VerticalScroll, screen_data: dict[str, Any]) -> None:
+        """Render a screensaver as an inline screen (within multi-screen mode)."""
+        self._stop_screensaver = False
+        name = screen_data.get("name", "Screensaver")
+        code = screen_data.get("code", "")
+
+        self._canvas_counter += 1
+        canvas = RichLog(id=f"script-canvas-{self._canvas_counter}", highlight=True, markup=True)
+        canvas.border_title = f"~ {name} ~"
+        canvas.styles.border = ("round", "ansi_bright_magenta")
+        canvas.styles.padding = (0, 1)
+        canvas.styles.height = "1fr"
+        await container.mount(canvas)
+
+        self.run_worker(self._execute_screensaver_loop(canvas, code), exclusive=True)
 
     async def _show_waiting(self) -> None:
         """Show the waiting state."""
         self.current_mode = "waiting"
+        self._screens = {}
+        self._screen_order = []
+        self._active_screen = None
         content = self.query_one("#content-area", VerticalScroll)
         await content.remove_children()
         await content.mount(WaitingMessage())
 
     async def _render_sections(self, sections: list[dict[str, str]]) -> None:
-        """Render sections mode."""
+        """Render single-screen sections mode (backward compatible)."""
         self.current_mode = "sections"
         content = self.query_one("#content-area", VerticalScroll)
         await content.remove_children()
@@ -182,8 +287,9 @@ class PanelViewer(App):
             await content.mount(panel)
 
     async def _render_script(self, script: dict[str, str]) -> None:
-        """Render script mode — execute a Python script with a RichLog canvas."""
+        """Render script mode -- execute a Python script with a RichLog canvas."""
         self.current_mode = "script"
+        self._stop_screensaver = True
         content = self.query_one("#content-area", VerticalScroll)
         await content.remove_children()
 
@@ -198,11 +304,10 @@ class PanelViewer(App):
         canvas.styles.height = "1fr"
         await content.mount(canvas)
 
-        # Execute the script in a worker
         self.run_worker(self._execute_script(canvas, code), exclusive=True)
 
     async def _render_screensaver(self, screensaver: dict[str, str]) -> None:
-        """Render screensaver mode — loop a script continuously."""
+        """Render standalone screensaver mode (legacy screensaver_play)."""
         self.current_mode = "screensaver"
         self._stop_screensaver = False
         content = self.query_one("#content-area", VerticalScroll)
@@ -220,8 +325,6 @@ class PanelViewer(App):
         await content.mount(canvas)
 
         self.query_one("#status-bar", Static).update(f"Screensaver: {name}")
-
-        # Execute the script in a looping worker
         self.run_worker(self._execute_screensaver_loop(canvas, code), exclusive=True)
 
     async def _execute_screensaver_loop(self, canvas: RichLog, code: str) -> None:
@@ -249,7 +352,7 @@ class PanelViewer(App):
             while not self._stop_screensaver:
                 canvas.clear()
                 await namespace["__script__"]()
-                await asyncio.sleep(0.1)  # brief pause between loops
+                await asyncio.sleep(0.1)
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -257,17 +360,13 @@ class PanelViewer(App):
 
     async def _execute_script(self, canvas: RichLog, code: str) -> None:
         """Execute user script with canvas and rich library available."""
-        # Build the script's namespace with useful imports
-        # Pass terminal dimensions so scripts can fill the window
-        # Account for borders, padding, header, status bar
-        term_width = self.size.width - 8   # 2 padding + 2 border + margin
-        term_height = self.size.height - 6  # header + status bar + borders + padding
+        term_width = self.size.width - 8
+        term_height = self.size.height - 6
         namespace: dict[str, Any] = {
             "canvas": canvas,
             "sleep": asyncio.sleep,
             "width": max(term_width, 20),
             "height": max(term_height, 10),
-            # Rich classes for the script to use
             "Text": Text,
             "Panel": RichPanel,
             "Table": Table,
@@ -276,8 +375,7 @@ class PanelViewer(App):
         }
 
         try:
-            # Wrap code in an async function so `await` works
-            wrapped = f"async def __script__():\n"
+            wrapped = "async def __script__():\n"
             for line in code.splitlines():
                 wrapped += f"    {line}\n"
 
@@ -285,6 +383,32 @@ class PanelViewer(App):
             await namespace["__script__"]()
         except Exception as e:
             canvas.write(Text(f"\n[Error] {type(e).__name__}: {e}", style="bold red"))
+
+    # ── Key bindings for manual screen navigation ──
+
+    async def action_prev_screen(self) -> None:
+        """Navigate to previous screen."""
+        if self.current_mode != "multi" or len(self._screen_order) <= 1:
+            return
+        idx = self._screen_order.index(self._active_screen) if self._active_screen in self._screen_order else 0
+        idx = (idx - 1) % len(self._screen_order)
+        self._active_screen = self._screen_order[idx]
+        self._stop_screensaver = True
+        await asyncio.sleep(0.05)  # let screensaver worker stop
+        self._stop_screensaver = False
+        await self._render_active_screen()
+
+    async def action_next_screen(self) -> None:
+        """Navigate to next screen."""
+        if self.current_mode != "multi" or len(self._screen_order) <= 1:
+            return
+        idx = self._screen_order.index(self._active_screen) if self._active_screen in self._screen_order else 0
+        idx = (idx + 1) % len(self._screen_order)
+        self._active_screen = self._screen_order[idx]
+        self._stop_screensaver = True
+        await asyncio.sleep(0.05)
+        self._stop_screensaver = False
+        await self._render_active_screen()
 
     async def action_clear(self) -> None:
         """Clear the panel."""

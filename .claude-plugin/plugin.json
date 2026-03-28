@@ -1,0 +1,10 @@
+{
+  "name": "claude-panel",
+  "version": "0.2.0",
+  "description": "Persistent side panel for Claude Code sessions. Shows rotating context screens, progress dashboards, and ambient screensavers in a Textual TUI viewer via iTerm2 split pane.",
+  "author": {
+    "name": "Alex"
+  },
+  "keywords": ["panel", "tui", "context", "dashboard", "screensaver"],
+  "mcpServers": "./mcp-servers.json"
+}
