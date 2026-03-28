@@ -1,84 +1,123 @@
 # Claude Panel
 
-A persistent side panel for Claude Code. MCP server exposes tools that let Claude push content to a Textual TUI running in an adjacent iTerm2 pane.
+A persistent side panel for Claude Code sessions. Three-screen TUI dashboard with background AI curator.
 
-## What it does
+## Screens
 
-- **Status dashboard** — goal, progress, changed files, assumptions
-- **Rich explanations** — markdown with code blocks, diagrams
-- **Animations** — run Python scripts that render dynamic content in the panel
+| Screen | Purpose | Updated by |
+|--------|---------|------------|
+| **main** | Free-form canvas — plans, diagrams, explanations | Background Haiku agent |
+| **status** | Structured dashboard — task, files, decisions | Stop hook + LLM curator |
+| **ambient** | Screensaver animations | Direct `panel()` call |
 
-## Setup
+## Install
 
-### 1. Install
+### As a plugin (recommended)
+
+```bash
+claude plugin marketplace add /path/to/claude-panel
+claude plugin install claude-panel@claude-panel
+```
+
+### Manual
 
 ```bash
 cd ~/Desktop/Projects/claude-panel
 uv sync
 ```
 
-### 2. iTerm2 config
+Add to `.mcp.json` or `~/.claude/settings.json` for MCP server access.
 
-- **Vertical split**: `Cmd + D` to create a side-by-side layout
-- **Disable dimming**: iTerm2 > Settings > Appearance > Dimming > uncheck "Dim inactive split panes"
-- Switch between panes: `Cmd + Option + Arrow`
+## Usage
 
-### 3. Start the viewer
-
-In the right pane:
+### Start the viewer
 
 ```bash
+# Automatic (via MCP tool)
+# Claude calls panel_open() to launch in iTerm2 split
+
+# Manual
 cd ~/Desktop/Projects/claude-panel && uv run claude-panel
 ```
 
-### 4. Register MCP server
+### Panel updates (zero conversation noise)
 
-The `.mcp.json` in this project auto-registers with Claude Code when you work from this directory. For global access, add to `~/.claude/settings.json`.
+Claude updates the panel via background agents — invisible to the user:
 
-## Tools
+```python
+# Background Haiku agent writes to state.json (~5s)
+Agent(mode="dontAsk", model="haiku", run_in_background=True,
+      prompt="update panel main screen with...")
 
-### `panel(sections)`
-
-Static content display. Each call replaces the entire panel.
-
-```json
-{
-  "sections": [
-    {"id": "goal", "title": "Goal", "content": "Build auth middleware"},
-    {"id": "progress", "title": "Progress", "content": "- [x] Read code\n- [ ] Write tests"}
-  ]
-}
+# Status auto-updates via Stop hook after every response (~15s)
 ```
 
-Pass an empty list to clear.
+### Direct commands (one-liners)
 
-### `panel_script(code, title)`
-
-Run a Python script inside the viewer. The script receives:
-
-- `canvas` — RichLog widget (`canvas.write(...)`, `canvas.clear()`)
-- `sleep` — async sleep for timing
-- `width`, `height` — actual panel dimensions in characters
-- Rich classes: `Text`, `Panel`, `Table`, `Columns`, `Syntax`
-
-```json
-{
-  "code": "for i in range(5):\n    canvas.write(f'Step {i+1}')\n    await sleep(0.5)",
-  "title": "Demo"
-}
+```python
+panel(show="ambient")              # switch to screensaver
+panel(screensaver="rain-city")     # change screensaver
+panel(show="main")                 # switch to main
 ```
-
-## Keybindings
-
-| Key | Action |
-|-----|--------|
-| `q` | Quit viewer |
-| `c` | Clear panel |
 
 ## Architecture
 
 ```
-Claude Code --stdio--> MCP Server (panel tool) --JSON file--> Textual Viewer (iTerm2 pane)
+┌──────────────────┐     ┌──────────────────┐
+│   Claude Code    │     │   iTerm2 Split   │
+│                  │     │                  │
+│  MCP Server      │     │  Textual TUI     │
+│  (server.py)     │     │  (viewer.py)     │
+└────────┬─────────┘     └────────┬─────────┘
+         │  WRITES                │ POLLS
+         └──────► state.json ◄────┘
+              ~/.claude-panel/
 ```
 
-IPC is a shared JSON file at `~/.claude-panel/state.json` (atomic write via temp+rename). The viewer polls every 300ms.
+### Update flow
+
+1. **Stop hook** fires after each response → writes loading spinner → runs status curator (Haiku LLM)
+2. **Background agent** spawned by Claude → updates main screen with rich content
+3. **Viewer** polls `state.json` every 300ms → re-renders on timestamp change
+
+### Files
+
+```
+claude-panel/
+├── .claude-plugin/          # Plugin manifest + marketplace
+├── hooks/
+│   ├── hooks.json           # Stop hook registration
+│   └── scripts/
+│       ├── curator.sh       # Loading indicator + status curator
+│       └── session-start.sh # Detects viewer, reminds Claude
+├── src/claude_panel/
+│   ├── server.py            # MCP tools (panel, screensaver, etc.)
+│   ├── viewer.py            # Textual TUI with multi-screen + spinner
+│   ├── curator.py           # State helpers + status LLM curator
+│   └── constants.py         # Paths, poll interval
+└── pyproject.toml
+```
+
+## Config
+
+`~/.claude-panel/config.json`:
+
+```json
+{
+  "model": "claude-haiku-4-5-20251001",
+  "favorite_screensaver": "rain-city",
+  "update_every_n": 1
+}
+```
+
+## Keybindings (viewer)
+
+| Key | Action |
+|-----|--------|
+| `q` | Quit |
+| `←` `→` | Browse screens |
+| `c` | Clear |
+
+## Screensavers
+
+Available: `banquet`, `city-lights`, `dvd-bounce`, `matrix`, `noir`, `rain-city`, `space-flight`, `tokyo-drift`

@@ -25,14 +25,13 @@ You manage a persistent side panel with three screens: main, status, ambient.
 
 ## How to update the panel (IMPORTANT)
 
-To keep the conversation clean, update the panel via a **background Haiku agent**. \
+To keep the conversation clean, update the panel via a **background agent**. \
 This is invisible to the user — zero noise in the chat.
 
 ```python
 Agent(
     description="Update panel",
-    mode="dontAsk",
-    model="haiku",
+    mode="bypassPermissions",
     run_in_background=True,
     prompt=\"\"\"Run this bash command:
 cd /Users/aradaev/Desktop/Projects/claude-panel && uv run python3 -c "

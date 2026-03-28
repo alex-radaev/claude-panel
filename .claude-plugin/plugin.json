@@ -1,7 +1,7 @@
 {
   "name": "claude-panel",
-  "version": "0.2.0",
-  "description": "Persistent side panel for Claude Code sessions. Shows rotating context screens, progress dashboards, and ambient screensavers in a Textual TUI viewer via iTerm2 split pane.",
+  "version": "0.3.0",
+  "description": "Persistent 3-screen side panel for Claude Code with background AI curator. Main (free-form), status (auto-updated dashboard), ambient (screensavers).",
   "author": {
     "name": "Alex"
   },
