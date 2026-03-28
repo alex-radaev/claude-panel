@@ -10,14 +10,12 @@ else
     echo "CLAUDE-PANEL: Side panel is running."
 fi
 
-# Detect favorite screensaver
-FAVORITE=""
-if [ -d "$SCREENSAVERS_DIR" ]; then
-    if [ -f "$SCREENSAVERS_DIR/tokyo-drift.py" ]; then
-        FAVORITE="tokyo-drift"
-    else
-        FAVORITE=$(ls "$SCREENSAVERS_DIR"/*.py 2>/dev/null | head -1 | xargs basename 2>/dev/null | sed 's/.py$//')
-    fi
+# Read config for favorite screensaver
+CONFIG_FILE="$HOME/.claude-panel/config.json"
+FAVORITE="rain-city"
+if [ -f "$CONFIG_FILE" ]; then
+    CONFIGURED=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('favorite_screensaver',''))" 2>/dev/null)
+    [ -n "$CONFIGURED" ] && FAVORITE="$CONFIGURED"
 fi
 
 echo ""

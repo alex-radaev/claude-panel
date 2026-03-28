@@ -377,20 +377,26 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
                 state = update_status_section(state, field, str(value))
                 changed = True
 
-        # Apply mood/emoji update — but only if main Claude hasn't pushed
-        # specific content (type "sections" or "file" means Claude is showing something)
+        # Apply mood/emoji update — respect main Claude's overrides with timeout
         main_screen = state.get("screens", {}).get("main", {})
         main_type = main_screen.get("type", "")
         emoji = updates.get("emoji")
         context = updates.get("context", "")
         if emoji and context:
-            if main_type in ("mood", "") or "main" not in state.get("screens", {}):
-                # Curator owns main — update the mood
+            # Check if Claude's override is stale (>2 min old)
+            override_stale = False
+            if main_type not in ("mood", ""):
+                main_ts = state.get("ts", 0)
+                age = time.time() - main_ts
+                if age > 120:  # 2 minutes
+                    override_stale = True
+                    logger.info(f"Main override stale ({age:.0f}s) — reclaiming for mood")
+
+            if main_type in ("mood", "") or "main" not in state.get("screens", {}) or override_stale:
                 state = update_mood(state, emoji, context)
                 changed = True
                 logger.info(f"Mood: {emoji} {context}")
             else:
-                # Main Claude pushed content — respect it, don't overwrite
                 logger.info(f"Mood skipped ({emoji}) — main has type '{main_type}' from Claude")
 
         if changed:
