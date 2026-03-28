@@ -243,11 +243,6 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
             return
 
     transcript_path = hook_input.get("transcript_path", "")
-    logger.info(f"Hook input keys: {list(hook_input.keys())}")
-    last_msg = hook_input.get("last_assistant_message", {})
-    logger.info(f"Transcript path: {transcript_path!r}")
-    logger.info(f"last_assistant_message keys: {list(last_msg.keys()) if isinstance(last_msg, dict) else type(last_msg).__name__}")
-    logger.info(f"last_assistant_message sample: {json.dumps(last_msg)[:500]}")
     if not transcript_path:
         logger.info("No transcript path, skipping")
         return
