@@ -169,7 +169,8 @@ def _parse_markdown_to_sections(text: str) -> list[dict[str, str]]:
                     })
 
             current_title = line[3:].strip()
-            current_id = current_title.lower().replace(" ", "-").replace("/", "-")
+            import re
+            current_id = re.sub(r"[^a-z0-9_-]", "", current_title.lower().replace(" ", "-"))
             current_lines = []
         elif current_title is not None:
             current_lines.append(line)

@@ -10,12 +10,14 @@
         ]
       }
     ],
-    "Stop": [
+    "UserPromptSubmit": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/nudge.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/curator.sh",
+            "async": true,
+            "timeout": 30
           }
         ]
       }
