@@ -124,18 +124,59 @@ def set_active(state: dict[str, Any], screen: str) -> dict[str, Any]:
     return state
 
 
-def update_mood(state: dict[str, Any], emoji: str, context: str, tip: str = "") -> dict[str, Any]:
-    """Update main screen with an emoji mood + context + optional tip.
+EMOJI_DIR = PANEL_DIR / "emoji"
 
-    This is the primary way the main agent expresses state on the panel.
-    The emoji is shown large, with context below and an optional tip.
+EMOJI_MAP = {
+    "🔥": "fire", "🤔": "thinking", "🎯": "target", "🎉": "celebration",
+    "🏗️": "building", "🐛": "bug", "💡": "lightbulb", "☕": "coffee",
+    "⚡": "urgent", "🧪": "testing", "🎨": "designing", "📚": "learning",
+    "🚀": "rocket", "🔧": "refactoring",
+}
+
+
+def update_mood(state: dict[str, Any], emoji: str, context: str, tip: str = "") -> dict[str, Any]:
+    """Update main screen with a big Rich-styled emoji + context + optional tip.
+
+    Loads a Python script from ~/.claude-panel/emoji/<name>.py if available.
+    The script receives CONTEXT and TIP variables plus the standard canvas/Rich namespace.
+    Falls back to a simple centered display.
     """
-    sections = [
-        {"id": "mood", "title": "", "content": f"# {emoji}\n\n**{context}**"},
-    ]
-    if tip:
-        sections.append({"id": "tip", "title": "Tip", "content": tip})
-    return update_main(state, sections)
+    art_name = EMOJI_MAP.get(emoji, "")
+    script_path = EMOJI_DIR / f"{art_name}.py" if art_name else None
+
+    if script_path and script_path.exists():
+        code = script_path.read_text()
+    else:
+        # Fallback: simple centered emoji
+        code = f"""
+from rich.text import Text
+from rich.align import Align
+canvas.write(Text(""))
+canvas.write(Text(""))
+canvas.write(Align.center(Text("{emoji}", style="bold")))
+canvas.write(Text(""))
+canvas.write(Align.center(Text("━" * 40, style="dim")))
+canvas.write(Text(""))
+canvas.write(Align.center(Text(CONTEXT, style="bold")))
+if TIP:
+    canvas.write(Text(""))
+    canvas.write(Align.center(Text(TIP, style="dim italic")))
+"""
+
+    # Inject CONTEXT and TIP as variables into the script
+    header = f'CONTEXT = {context!r}\nTIP = {tip!r}\n'
+    full_code = header + code
+
+    state = ensure_multi(state)
+    screens = state.get("screens", {})
+    order = list(state.get("screen_order", []))
+    screens["main"] = {"type": "mood", "code": full_code, "emoji": emoji, "context": context}
+    if "main" not in order:
+        order.append("main")
+    state["screens"] = screens
+    state["screen_order"] = ensure_screen_order(order)
+    state["active"] = "main"
+    return state
 
 
 # ── Hook-based status curator ──────────────────────────────────────

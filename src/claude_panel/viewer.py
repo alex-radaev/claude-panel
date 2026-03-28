@@ -253,6 +253,8 @@ class PanelViewer(App):
 
         if screen_type == "screensaver":
             await self._render_screensaver_inline(content, screen_data)
+        elif screen_type == "mood":
+            await self._render_mood_inline(content, screen_data)
         elif screen_type == "file":
             # Re-read the markdown file for latest content
             sections = self._load_file_sections(screen_data)
@@ -284,6 +286,19 @@ class PanelViewer(App):
                 body = section.get("content", "")
                 panel = SectionPanel(f"{self._active_screen}-{sid}", title, body)
                 await container.mount(panel)
+
+    async def _render_mood_inline(self, container: VerticalScroll, screen_data: dict[str, Any]) -> None:
+        """Render a mood emoji script on the main screen (runs once, not looped)."""
+        self._stop_screensaver = True
+        code = screen_data.get("code", "")
+
+        self._canvas_counter += 1
+        canvas = RichLog(id=f"script-canvas-{self._canvas_counter}", highlight=True, markup=True)
+        canvas.styles.padding = (1, 2)
+        canvas.styles.height = "1fr"
+        await container.mount(canvas)
+
+        self.run_worker(self._execute_script(canvas, code), exclusive=True)
 
     async def _render_screensaver_inline(self, container: VerticalScroll, screen_data: dict[str, Any]) -> None:
         """Render a screensaver as an inline screen (within multi-screen mode)."""
