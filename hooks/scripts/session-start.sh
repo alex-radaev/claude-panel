@@ -21,14 +21,9 @@ if [ -d "$SCREENSAVERS_DIR" ]; then
 fi
 
 echo ""
-echo "Set up the panel's 3 screens:"
-echo "  1. panel(screensaver=\"${FAVORITE:-tokyo-drift}\")  -- ambient screensaver"
-echo "  2. panel(screen=\"status\", section=\"task\", content=\"...\")  -- init status dashboard"
-echo "  3. panel(sections=[...])  -- show context on main as you work"
-echo ""
-echo "Status sections to maintain: task, files (changed), decisions (made)"
-echo "Update status incrementally: panel(screen=\"status\", section=\"files\", content=\"- file.py -- what changed\")"
-echo "Show screensaver when idle: panel(show=\"ambient\")"
+echo "Panel uses background agents for updates (zero conversation noise)."
+echo "Status screen auto-updates via Stop hook after each response."
+echo "Use panel(show=\"ambient\") for screensaver, panel(show=\"main\") to check context."
 
 # Reset nudge counter
 echo "0" > "$HOME/.claude-panel/.nudge_state" 2>/dev/null
