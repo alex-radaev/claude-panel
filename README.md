@@ -34,10 +34,10 @@ Claude Code is great, but the conversation scrolls fast. What was the last decis
 
 Eight built-in terminal animations. Navigate with arrow keys or `panel(show="ambient")`.
 
-<p align="center"><img src="demo/screensaver-space-flight.gif" alt="space-flight screensaver" width="400"></p>
+<p align="center"><img src="demo/screensaver-space-flight.gif" alt="space-flight screensaver" width="900"></p>
 <p align="center"><em>space-flight</em></p>
 
-<p align="center"><img src="demo/screensaver-tokyo-drift.gif" alt="tokyo-drift screensaver" width="400"></p>
+<p align="center"><img src="demo/screensaver-tokyo-drift.gif" alt="tokyo-drift screensaver" width="900"></p>
 <p align="center"><em>tokyo-drift</em></p>
 
 Also available: `rain-city` | `city-lights` | `matrix` | `noir` | `banquet` | `dvd-bounce`
