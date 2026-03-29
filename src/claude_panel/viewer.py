@@ -14,6 +14,7 @@ from rich.columns import Columns
 from rich.syntax import Syntax
 from textual.app import App, ComposeResult
 from textual.containers import VerticalScroll
+from textual.message import Message
 from textual.reactive import reactive
 from textual.widgets import Footer, Header, Markdown, RichLog, Static
 
@@ -57,10 +58,32 @@ class WaitingMessage(Static):
 class ScreenBar(Static):
     """Shows available screens with the active one highlighted."""
 
+    class ScreenClicked(Message):
+        """Posted when a screen name is clicked."""
+
+        def __init__(self, screen_name: str) -> None:
+            super().__init__()
+            self.screen_name = screen_name
+
     def __init__(self, screens: list[str], active: str) -> None:
         super().__init__(id="screen-bar")
         self._screens = screens
         self._active = active
+
+    def _build_parts(self) -> list[tuple[str, int, int]]:
+        """Build screen labels with their character offsets (name, start, end)."""
+        parts: list[tuple[str, int, int]] = []
+        offset = 0
+        for i, name in enumerate(self._screens):
+            if name == self._active:
+                label = f" \u25cf {name} "
+            else:
+                label = f" \u25cb {name} "
+            parts.append((name, offset, offset + len(label)))
+            offset += len(label)
+            if i < len(self._screens) - 1:
+                offset += 2  # "  " separator
+        return parts
 
     def render(self) -> Text:
         parts = []
@@ -70,6 +93,21 @@ class ScreenBar(Static):
             else:
                 parts.append(f"[dim] \u25cb {name} [/]")
         return Text.from_markup("  ".join(parts))
+
+    def on_click(self, event: Any) -> None:
+        """Handle mouse clicks on screen names."""
+        # Adjust for center alignment: calculate total bar width and offset
+        parts = self._build_parts()
+        if not parts:
+            return
+        total_width = parts[-1][2]  # end of last part
+        container_width = self.size.width
+        left_pad = max(0, (container_width - total_width) // 2)
+        click_x = event.x - left_pad
+        for name, start, end in parts:
+            if start <= click_x < end:
+                self.post_message(self.ScreenClicked(name))
+                return
 
     def on_mount(self) -> None:
         self.styles.text_align = "center"
@@ -463,7 +501,20 @@ class PanelViewer(App):
         except Exception as e:
             canvas.write(Text(f"\n[Error] {type(e).__name__}: {e}", style="bold red"))
 
-    # ── Key bindings for manual screen navigation ──
+    # ── Screen navigation (keyboard + mouse) ──
+
+    async def on_screen_bar_screen_clicked(self, event: ScreenBar.ScreenClicked) -> None:
+        """Handle mouse click on a screen name in the bar."""
+        name = event.screen_name
+        if self.current_mode != "multi" or name not in self._screen_order:
+            return
+        if name == self._active_screen:
+            return
+        self._active_screen = name
+        self._stop_screensaver = True
+        await asyncio.sleep(0.05)
+        self._stop_screensaver = False
+        await self._render_active_screen()
 
     async def action_prev_screen(self) -> None:
         """Navigate to previous screen."""
