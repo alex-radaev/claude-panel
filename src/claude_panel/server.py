@@ -620,7 +620,7 @@ tell application "iTerm2"
     tell current session of current tab of current window
         set newSession to (split vertically with default profile)
         tell newSession
-            write text "cd '{project_dir}' && uv run claude-panel"
+            write text "{cmd}"
         end tell
     end tell
 end tell
@@ -630,9 +630,10 @@ end tell
 def _open_macos(project_dir: str) -> str:
     """Open panel in iTerm2 vertical split (macOS)."""
     if project_dir:
-        script = _OPEN_APPLESCRIPT.format(project_dir=project_dir)
+        cmd = f"cd '{project_dir}' && uv run claude-panel"
     else:
-        script = _OPEN_APPLESCRIPT.format(project_dir=".")
+        cmd = "claude-panel"
+    script = _OPEN_APPLESCRIPT.format(cmd=cmd)
     try:
         subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
         return "Panel viewer opened in iTerm2 split pane."
