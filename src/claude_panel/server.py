@@ -589,6 +589,11 @@ def _detect_platform() -> str:
         return "macos"
     if os.environ.get("WSL_DISTRO_NAME"):
         return "wsl"
+    try:
+        if "microsoft" in Path("/proc/version").read_text().lower():
+            return "wsl"
+    except OSError:
+        pass
     return "unknown"
 
 
