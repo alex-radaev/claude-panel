@@ -594,7 +594,7 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
     try:
         from claude_agent_sdk import query as sdk_query, ClaudeAgentOptions
 
-        options = ClaudeAgentOptions(model=model, max_turns=1)
+        options = ClaudeAgentOptions(model=model, max_turns=1, output_format="json")
         result_text = ""
 
         async for message in sdk_query(prompt=prompt, options=options):
