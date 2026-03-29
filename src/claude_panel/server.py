@@ -11,7 +11,9 @@ from typing import Any
 from fastmcp import FastMCP
 
 from claude_panel.constants import (
+    CONFIG_FILE,
     CONTENT_DIR,
+    DEFAULT_SCREENSAVER,
     PANEL_DIR,
     SCREENSAVERS_DIR,
     STATE_FILE,
@@ -208,6 +210,34 @@ def _ensure_screen_order(order: list[str]) -> list[str]:
     return standard + custom
 
 
+def _ensure_ambient(state: dict[str, Any]) -> dict[str, Any]:
+    """Ensure the ambient screen has a screensaver loaded."""
+    state = _ensure_multi(state)
+    screens = state.get("screens", {})
+    if "ambient" in screens:
+        return state
+
+    name = DEFAULT_SCREENSAVER
+    try:
+        if CONFIG_FILE.exists():
+            cfg = json.loads(CONFIG_FILE.read_text())
+            name = cfg.get("favorite_screensaver", name)
+    except Exception:
+        pass
+
+    path = resolve_screensaver(name)
+    if not path:
+        return state
+
+    screens["ambient"] = {"type": "screensaver", "name": name, "code": path.read_text()}
+    order = list(state.get("screen_order", []))
+    if "ambient" not in order:
+        order.append("ambient")
+    state["screens"] = screens
+    state["screen_order"] = _ensure_screen_order(order)
+    return state
+
+
 # Default sections for the status screen
 STATUS_SECTIONS = [
     {"id": "task", "title": "Current Task", "content": "*Not set*"},
@@ -309,6 +339,7 @@ async def panel(
       panel(show="ambient")                                          # switch to screensaver
     """
     state = _read_state()
+    state = _ensure_ambient(state)
 
     # ── Handle clear ──
     if clear is not None:
