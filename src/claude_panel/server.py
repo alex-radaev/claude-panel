@@ -124,11 +124,25 @@ Agent(description="Fetch docs for panel", mode="bypassPermissions",
 The status screen auto-updates via a Stop hook — you don't need to manage it. \
 It shows: current task, files changed, decisions made.
 
+## Reading the panel
+
+Use `panel_read()` to see what's currently on screen. Check before updating \
+to avoid repeating what the curator already wrote.
+
 ## Quick commands (direct tool calls)
 
 - `panel(show="ambient")` — screensaver
 - `panel(show="main")` — switch to main
 - `panel(screensaver="rain-city")` — change screensaver
+- `panel_read()` — see current panel content
+
+## Curator personality
+
+The status curator's personality is configurable via `~/.claude-panel/config.json`:
+- `"curator_personality": "playful"` — witty, emoji combos, humor (default)
+- `"curator_personality": "professional"` — concise, actionable, no jokes
+
+If the user asks to change the curator personality, update the config file.
 """,
 )
 
