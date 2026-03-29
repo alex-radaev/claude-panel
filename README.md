@@ -60,6 +60,7 @@ Screensavers are plain Python scripts that draw to a Rich canvas. [Creating your
 
 ```bash
 # As a Claude Code plugin (recommended)
+claude plugin marketplace add alex-radaev/claude-panel
 claude plugin install claude-panel@claude-panel
 ```
 
