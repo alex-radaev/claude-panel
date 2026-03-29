@@ -32,13 +32,13 @@ Claude Panel is a persistent TUI that sits next to your Claude Code terminal. Cl
 
 Eight built-in terminal animations. Navigate with arrow keys or `panel(show="ambient")`.
 
-<p align="center"><img src="demo/screensaver-space-flight.gif" alt="space-flight screensaver" width="900"></p>
-<p align="center"><em>space-flight</em></p>
+<p align="center"><img src="demo/screensaver-aurora.gif" alt="aurora screensaver" width="900"></p>
+<p align="center"><em>aurora</em></p>
 
 <p align="center"><img src="demo/screensaver-tokyo-drift.gif" alt="tokyo-drift screensaver" width="900"></p>
 <p align="center"><em>tokyo-drift</em></p>
 
-Also available: `rain-city` | `city-lights` | `matrix` | `noir` | `banquet` | `dvd-bounce`
+Also available: `neon-dreams` | `space-flight` | `rain-city` | `city-lights` | `matrix` | `noir` | `banquet` | `dvd-bounce`
 
 Screensavers are plain Python scripts that draw to a Rich canvas. [Creating your own takes ~10 lines.](CONTRIBUTING.md#creating-a-screensaver)
 
