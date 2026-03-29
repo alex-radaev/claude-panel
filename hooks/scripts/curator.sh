@@ -78,8 +78,15 @@ path = '$STATE_DIR/curator_nudge.json'
 data = {'transcript_path': '$TRANSCRIPT_PATH', 'ts': time.time()}
 open(path, 'w').write(json.dumps(data))
 " 2>/dev/null
+elif [ -n "$SESSION_ID" ]; then
+    # Daemon died — restart it and fall back to per-call for this round
+    nohup uv run --directory "$PLUGIN_ROOT" python3 -m claude_panel.curator_daemon "$SESSION_ID" \
+        >> "$HOME/.claude-panel/curator.log" 2>&1 &
+    # Run per-call curator for this one update while daemon warms up
+    echo "$INPUT" | uv run --directory "$PLUGIN_ROOT" python -m claude_panel.curator \
+        >> "$HOME/.claude-panel/curator.log" 2>&1
 else
-    # Fallback: run curator directly (slower, per-call subprocess)
+    # No session ID — fallback to per-call curator
     echo "$INPUT" | uv run --directory "$PLUGIN_ROOT" python -m claude_panel.curator \
         >> "$HOME/.claude-panel/curator.log" 2>&1
 fi
