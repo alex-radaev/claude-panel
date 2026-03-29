@@ -30,7 +30,7 @@ Claude Panel is a persistent TUI that sits next to your Claude Code terminal. Cl
 
 ## Ambient Screensavers
 
-Eight built-in terminal animations. Navigate with arrow keys or `panel(show="ambient")`.
+Twelve built-in terminal animations ship with the package. Navigate with arrow keys or `panel(show="ambient")`.
 
 <p align="center"><img src="demo/screensaver-aurora.gif" alt="aurora screensaver" width="900"></p>
 <p align="center"><em>aurora</em></p>
@@ -38,7 +38,21 @@ Eight built-in terminal animations. Navigate with arrow keys or `panel(show="amb
 <p align="center"><img src="demo/screensaver-tokyo-drift.gif" alt="tokyo-drift screensaver" width="900"></p>
 <p align="center"><em>tokyo-drift</em></p>
 
-Also available: `neon-dreams` | `space-flight` | `rain-city` | `city-lights` | `matrix` | `noir` | `banquet` | `dvd-bounce`
+Also available: `neon-dreams` | `neon-street` | `space-flight` | `rain-city` | `city-lights` | `matrix` | `noir` | `banquet` | `dvd-bounce` | `synthwave`
+
+All screensavers are bundled with the package — they work out of the box on a fresh install.
+
+### Custom screensavers
+
+Drop a `.py` file in `~/.claude-panel/screensavers/` and it becomes available immediately. User screensavers override bundled ones of the same name, so you can customize any built-in screensaver without touching the package.
+
+```bash
+# List available screensavers
+panel(screensaver="rain-city")
+
+# Or ask Claude to create one
+# "make me a screensaver with falling snow"
+```
 
 Screensavers are plain Python scripts that draw to a Rich canvas. [Creating your own takes ~10 lines.](CONTRIBUTING.md#creating-a-screensaver)
 
