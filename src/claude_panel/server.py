@@ -539,6 +539,48 @@ async def screensaver_list() -> str:
     return f"Available screensavers: {', '.join(names)}"
 
 
+@mcp.tool()
+async def panel_read() -> str:
+    """Read the current panel content — see what's on each screen right now.
+
+    Returns the main and status screen content (text only, no screensaver code).
+    Use this to check what the curator wrote, avoid repeating info, or answer
+    when the user asks "what's on the panel?"
+    """
+    state = _read_state()
+    if not state or state.get("mode") != "multi":
+        return "Panel is empty — no screens set up yet."
+
+    screens = state.get("screens", {})
+    order = state.get("screen_order", [])
+    active = state.get("active", "")
+    parts = []
+
+    for name in order:
+        s = screens.get(name, {})
+        stype = s.get("type", "")
+
+        if stype == "screensaver":
+            parts.append(f"[{name}] screensaver: {s.get('name', '?')}")
+        elif stype == "mood":
+            parts.append(f"[{name}] {s.get('emoji', '')} {s.get('context', '')}")
+        elif stype == "sections":
+            lines = [f"[{name}]"]
+            for sec in s.get("sections", []):
+                lines.append(f"  ## {sec.get('title', 'Untitled')}")
+                lines.append(f"  {sec.get('content', '').strip()}")
+            parts.append("\n".join(lines))
+        elif stype == "file":
+            lines = [f"[{name}] (from file: {s.get('file', '?')})"]
+            for sec in s.get("sections", []):
+                lines.append(f"  ## {sec.get('title', 'Untitled')}")
+                lines.append(f"  {sec.get('content', '').strip()}")
+            parts.append("\n".join(lines))
+
+    header = f"Active screen: {active}\n\n"
+    return header + "\n\n".join(parts)
+
+
 OPEN_APPLESCRIPT = """
 tell application "iTerm2"
     tell current session of current tab of current window
