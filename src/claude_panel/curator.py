@@ -14,8 +14,11 @@ import time
 from typing import Any
 
 from claude_panel.constants import (
+    CONFIG_FILE,
+    DEFAULT_SCREENSAVER,
     PANEL_DIR,
     STATE_FILE,
+    resolve_screensaver,
 )
 from claude_panel.session import (
     get_session_id_from_transcript,
@@ -92,6 +95,35 @@ def ensure_screen_order(order: list[str]) -> list[str]:
     standard = [s for s in STANDARD_ORDER if s in order]
     custom = [s for s in order if s not in STANDARD_ORDER]
     return standard + custom
+
+
+def ensure_ambient(state: dict[str, Any]) -> dict[str, Any]:
+    """Ensure the ambient screen has a screensaver loaded."""
+    state = ensure_multi(state)
+    screens = state.get("screens", {})
+    if "ambient" in screens:
+        return state
+
+    # Pick screensaver: config favorite -> default -> first available
+    name = DEFAULT_SCREENSAVER
+    try:
+        if CONFIG_FILE.exists():
+            cfg = json.loads(CONFIG_FILE.read_text())
+            name = cfg.get("favorite_screensaver", name)
+    except Exception:
+        pass
+
+    path = resolve_screensaver(name)
+    if not path:
+        return state
+
+    screens["ambient"] = {"type": "screensaver", "name": name, "code": path.read_text()}
+    order = list(state.get("screen_order", []))
+    if "ambient" not in order:
+        order.append("ambient")
+    state["screens"] = screens
+    state["screen_order"] = ensure_screen_order(order)
+    return state
 
 
 def update_main(state: dict[str, Any], sections: list[dict[str, str]]) -> dict[str, Any]:
@@ -380,6 +412,7 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
         return
 
     state = read_state(session_id)
+    state = ensure_ambient(state)
     current_status = format_current_status(state)
 
     # Get current mood
