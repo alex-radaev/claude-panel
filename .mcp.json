@@ -2,7 +2,7 @@
   "mcpServers": {
     "claude-panel": {
       "command": "uv",
-      "args": ["run", "--directory", "/Users/aradaev/Desktop/Projects/claude-panel", "claude-panel-server"]
+      "args": ["run", "claude-panel-server"]
     }
   }
 }
