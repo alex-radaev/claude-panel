@@ -34,8 +34,27 @@ for bx, bw, bh in buildings:
         sign_y = ground_y - bh + 2
         neon_signs.append((sign_x, sign_y, word, color))
 
+# Lightning state
+lightning_intensity = 0.0
+lightning_cooldown = random.randint(40, 120)
+
 for frame in range(200):
     canvas.clear()
+
+    # Lightning trigger — rare, quick double-flash
+    lightning_cooldown -= 1
+    if lightning_cooldown <= 0 and lightning_intensity == 0:
+        lightning_intensity = 1.0
+        lightning_cooldown = random.randint(60, 180)
+    # Decay: sharp flash then quick fade
+    if lightning_intensity > 0:
+        lightning_intensity *= 0.55  # rapid falloff
+        if lightning_intensity < 0.05:
+            # Chance of a second flash (double-strike)
+            if random.random() < 0.35 and lightning_cooldown > 50:
+                lightning_intensity = 0.7
+            else:
+                lightning_intensity = 0.0
 
     buf = [[" "] * width for _ in range(height)]
     colors = [["black"] * width for _ in range(height)]
@@ -65,25 +84,7 @@ for frame in range(200):
                             buf[y][rx] = "▪"
                             colors[y][rx] = f"rgb({r},{g},{b})"
 
-    # Rain
-    rain_chars = ["|", "│", "┃", "╎", "¦"]
-    for i in range(num_drops):
-        dx, dy = drops[i]
-        speed = drop_speeds[i]
-        ny = (dy + frame * speed) % (ground_y + 1)
-        if 0 <= ny < ground_y and 0 <= dx < width:
-            # Don't draw rain over buildings
-            if buf[ny][dx] == " ":
-                buf[ny][dx] = random.choice(rain_chars[:2])
-                colors[ny][dx] = "rgb(100,130,180)"
-            # Splash at ground
-            if ny >= ground_y - 1:
-                splash_x = dx + random.choice([-1, 0, 1])
-                if 0 <= splash_x < width:
-                    buf[ground_y][splash_x] = random.choice(["·", "°", "•"])
-                    colors[ground_y][splash_x] = "rgb(120,150,200)"
-
-    # Wet ground — reflections
+    # Wet ground — reflections (drawn before rain so drops appear on top)
     for y in range(ground_y, height):
         for x in range(width):
             buf[y][x] = random.choice(["▁", "▂", "░", "·", " ", " "])
@@ -115,11 +116,42 @@ for frame in range(200):
                             buf[gy][rx] = random.choice(["~", "≈", "∼", "░"])
                             colors[gy][rx] = ncolor
 
-    # Render
+    # Rain — drawn last so drops appear in front of buildings
+    rain_chars = ["|", "│"]
+    for i in range(num_drops):
+        dx, dy = drops[i]
+        speed = drop_speeds[i]
+        ny = (dy + frame * speed) % (ground_y + 1)
+        if 0 <= ny < ground_y and 0 <= dx < width:
+            buf[ny][dx] = random.choice(rain_chars)
+            colors[ny][dx] = "rgb(100,130,180)"
+            # Splash at ground
+            if ny >= ground_y - 1:
+                splash_x = dx + random.choice([-1, 0, 1])
+                if 0 <= splash_x < width:
+                    buf[ground_y][splash_x] = random.choice(["·", "°", "•"])
+                    colors[ground_y][splash_x] = "rgb(120,150,200)"
+
+    # Render — lightning flashes the whole scene
+    import re as _re
     for y in range(height):
         line = Text()
         for x in range(width):
-            line.append(buf[y][x], style=colors[y][x])
+            style = colors[y][x]
+            if lightning_intensity > 0.05:
+                if "rgb(" in style:
+                    m = _re.search(r'rgb\((\d+),(\d+),(\d+)\)', style)
+                    if m:
+                        cr, cg, cb = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                        boost = lightning_intensity * 180
+                        cr = min(255, int(cr + boost))
+                        cg = min(255, int(cg + boost))
+                        cb = min(255, int(cb + boost + 25))
+                        style = style[:m.start()] + f"rgb({cr},{cg},{cb})" + style[m.end():]
+                elif style == "black":
+                    v = int(lightning_intensity * 160)
+                    style = f"rgb({v},{v},{min(255, v + 25)})"
+            line.append(buf[y][x], style=style)
         canvas.write(line)
 
     await sleep(0.08)

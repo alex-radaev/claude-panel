@@ -176,7 +176,7 @@ for frame in range(200):
 
     # ── Blimp (floats across slowly) ──
     blimp_x = int((frame * 0.15 + width * 0.3) % (width + 30)) - 15
-    by = blimp_y + int(math.sin(frame * 0.02 + blimp_phase) * 1.5)
+    by = blimp_y + int(math.sin(frame * 0.007 + blimp_phase) * 4 + math.sin(frame * 0.02 + blimp_phase) * 1.5)
     # Body
     blimp_body = "▬▬▬═══▬▬▬"
     for i, ch in enumerate(blimp_body):
