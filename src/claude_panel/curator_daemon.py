@@ -43,6 +43,7 @@ from claude_panel.session import session_state_file
 logger = logging.getLogger("curator-daemon")
 
 POLL_INTERVAL = 0.5  # seconds between nudge checks
+IDLE_TIMEOUT = 600  # seconds (10 min) — daemon exits if no nudge received
 
 
 def _nudge_file(session_id: str) -> Path:
@@ -118,14 +119,21 @@ async def run_daemon(session_id: str) -> None:
         return
 
     # Main poll loop
+    last_activity = time.time()
     try:
         while True:
             await asyncio.sleep(POLL_INTERVAL)
+
+            # Idle timeout — exit if no nudge for too long
+            if time.time() - last_activity > IDLE_TIMEOUT:
+                logger.info(f"Idle timeout ({IDLE_TIMEOUT}s) — daemon exiting")
+                break
 
             nudge = _read_nudge(session_id)
             if nudge is None:
                 continue
 
+            last_activity = time.time()
             transcript_path = nudge.get("transcript_path", "")
             if not transcript_path:
                 continue
