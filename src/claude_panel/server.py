@@ -52,7 +52,7 @@ Agent(
     mode="bypassPermissions",
     run_in_background=True,
     prompt=\"\"\"Run this bash command:
-cd /Users/aradaev/Desktop/Projects/claude-panel && uv run python3 -c "
+python3 -c "
 from claude_panel.curator import read_state, write_state, update_mood
 from claude_panel.session import get_session_id
 sid = get_session_id()
@@ -583,40 +583,101 @@ async def panel_read() -> str:
     return header + "\n\n".join(parts)
 
 
-OPEN_APPLESCRIPT = """
+def _detect_platform() -> str:
+    """Return 'macos', 'wsl', or 'unknown'."""
+    if sys.platform == "darwin":
+        return "macos"
+    if os.environ.get("WSL_DISTRO_NAME"):
+        return "wsl"
+    return "unknown"
+
+
+def _get_project_dir() -> str:
+    """Resolve the claude-panel project directory from package location.
+
+    Returns the project root if found (editable install), or empty string
+    if the package is installed in site-packages (non-editable).
+    """
+    import importlib.util
+    spec = importlib.util.find_spec("claude_panel")
+    if spec and spec.origin:
+        candidate = Path(spec.origin).resolve().parent.parent.parent
+        if (candidate / "pyproject.toml").exists():
+            return str(candidate)
+    candidate = Path(__file__).resolve().parent.parent.parent
+    if (candidate / "pyproject.toml").exists():
+        return str(candidate)
+    return ""
+
+
+_OPEN_APPLESCRIPT = """
 tell application "iTerm2"
     tell current session of current tab of current window
         set newSession to (split vertically with default profile)
         tell newSession
-            write text "cd {project_dir} && uv run claude-panel"
+            write text "cd '{project_dir}' && uv run claude-panel"
         end tell
     end tell
 end tell
 """
 
 
-@mcp.tool()
-async def panel_open() -> str:
-    """Open the panel viewer in an iTerm2 vertical split pane.
-
-    Creates a new vertical split in the current iTerm2 window and starts
-    the Textual viewer. Call this before using panel() or panel_script().
-    """
-    project_dir = str(PANEL_DIR.parent / "Desktop" / "Projects" / "claude-panel")
-    import importlib.util
-    spec = importlib.util.find_spec("claude_panel")
-    if spec and spec.origin:
-        from pathlib import Path
-        project_dir = str(Path(spec.origin).parent.parent.parent)
-
-    script = OPEN_APPLESCRIPT.format(project_dir=project_dir)
+def _open_macos(project_dir: str) -> str:
+    """Open panel in iTerm2 vertical split (macOS)."""
+    if project_dir:
+        script = _OPEN_APPLESCRIPT.format(project_dir=project_dir)
+    else:
+        script = _OPEN_APPLESCRIPT.format(project_dir=".")
     try:
         subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
         return "Panel viewer opened in iTerm2 split pane."
     except subprocess.CalledProcessError as e:
         return f"Failed to open panel: {e.stderr.decode()}"
     except FileNotFoundError:
-        return "osascript not found -- panel_open() only works on macOS with iTerm2."
+        return "osascript not found. Install iTerm2 or run `claude-panel` manually in a side terminal."
+
+
+def _open_wsl(project_dir: str) -> str:
+    """Open panel in Windows Terminal vertical split (WSL)."""
+    distro = os.environ.get("WSL_DISTRO_NAME", "Ubuntu")
+    if project_dir:
+        cmd = f"cd '{project_dir}' && uv run claude-panel"
+    else:
+        cmd = "claude-panel"
+    try:
+        subprocess.run(
+            [
+                "wt.exe", "-w", "0", "sp", "-V", "--size", "0.35",
+                "--", "wsl.exe", "-d", distro, "--", "bash", "-lc", cmd,
+            ],
+            check=True,
+            capture_output=True,
+        )
+        return "Panel viewer opened in Windows Terminal split pane."
+    except subprocess.CalledProcessError as e:
+        return f"Failed to open panel: {e.stderr.decode()}"
+    except FileNotFoundError:
+        return "wt.exe not found. Install Windows Terminal or run `claude-panel` manually in a side terminal."
+
+
+@mcp.tool()
+async def panel_open() -> str:
+    """Open the panel viewer in a vertical split pane.
+
+    Detects the current platform and opens the viewer:
+    - macOS: iTerm2 vertical split
+    - WSL: Windows Terminal vertical split
+    - Other: returns the manual command to run
+    """
+    project_dir = _get_project_dir()
+    platform = _detect_platform()
+
+    if platform == "macos":
+        return _open_macos(project_dir)
+    elif platform == "wsl":
+        return _open_wsl(project_dir)
+    else:
+        return "Unsupported platform. Run `claude-panel` manually in a side terminal."
 
 
 def main():
