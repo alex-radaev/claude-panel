@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
@@ -173,7 +176,6 @@ def _read_state() -> dict[str, Any]:
 
 def _write_state(data: dict[str, Any]) -> None:
     """Atomically write state for this session."""
-    import os
     sid = _get_session_id()
     state_file, parent_dir = _resolve_state_file(sid)
     parent_dir.mkdir(parents=True, exist_ok=True)
