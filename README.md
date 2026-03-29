@@ -1,7 +1,7 @@
 <p align="center">
   <h1 align="center">Claude Panel</h1>
   <p align="center">
-    A persistent side panel for Claude Code — context that stays on screen while your conversation scrolls
+    Claude Code gets its own screen — it decides what you need to see
   </p>
 </p>
 
@@ -16,9 +16,7 @@
 
 ---
 
-Claude Code is great, but the conversation scrolls fast. What was the last decision? Which files changed? What's Claude working on right now?
-
-**Claude Panel** is a persistent TUI that sits next to your terminal. Claude decides what you see — current task, files changed, key decisions, code snippets, progress checklists, or a mood emoji. It's a second communication channel that keeps important context pinned on screen while the conversation moves on. Plus ambient terminal screensavers when you're between tasks.
+Claude Panel is a persistent TUI that sits next to your Claude Code terminal. Claude autonomously updates the panel with whatever it thinks matters — code it just wrote, a diagram, next steps, or a mood emoji. A structured dashboard tracks the current task, files changed, and key decisions, refreshing after every response. And when you're between tasks, ambient terminal screensavers keep the vibe going.
 
 ## Three Screens
 
@@ -91,7 +89,7 @@ panel(screensaver="tokyo-drift")   # change screensaver
 | `<-` `->` | Cycle screens |
 | `c` | Clear panel |
 
-> **iTerm2 tip:** If the panel pane looks dim, go to **Preferences > Profiles > Window** and set **Transparency** to 0 and uncheck **Dim inactive split panes**. This keeps both panes equally readable.
+> **iTerm2 tip:** The panel pane may look washed out because iTerm2 dims inactive split panes by default. To fix: **Settings > Appearance > Dimming** and uncheck **Dim inactive split panes**.
 
 ## How It Works
 
