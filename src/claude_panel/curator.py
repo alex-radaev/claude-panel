@@ -592,20 +592,25 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
     logger.info(f"Status curator: calling {model}")
 
     try:
-        from claude_agent_sdk import query as sdk_query, ClaudeAgentOptions
+        from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
         options = ClaudeAgentOptions(model=model, max_turns=1, output_format="json")
+        client = ClaudeSDKClient(options)
         result_text = ""
 
-        async for message in sdk_query(prompt=prompt, options=options):
-            if message is None:
-                continue
-            if hasattr(message, "result") and message.result:
-                result_text = message.result
-            elif hasattr(message, "content"):
-                for block in message.content:
-                    if hasattr(block, "text"):
-                        result_text += block.text
+        try:
+            await client.connect(prompt)
+            async for message in client.receive_messages():
+                if message is None:
+                    continue
+                if hasattr(message, "result") and message.result:
+                    result_text = message.result
+                elif hasattr(message, "content"):
+                    for block in message.content:
+                        if hasattr(block, "text"):
+                            result_text += block.text
+        finally:
+            await client.disconnect()
 
         if not result_text:
             logger.warning("Empty response from LLM")
