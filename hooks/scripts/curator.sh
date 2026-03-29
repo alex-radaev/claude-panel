@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Stop hook: run panel curator after Claude responds.
-# Writes a loading indicator immediately, then calls the curator for real content.
-# Session-aware: extracts session ID from transcript path for per-session state.
+# Stop hook: signal the curator daemon to update the panel.
+# If the daemon isn't running, falls back to the original per-call curator.
+# Session-aware: extracts session ID from transcript path.
 
 # Only run if the panel viewer is active
 pgrep -f "claude-panel" > /dev/null 2>&1 || exit 0
 
-# ── Read hook input and extract session ID ──
+# ── Read hook input and extract session ID + transcript path ──
 INPUT=$(cat)
 
 SESSION_ID=$(python3 -c "
@@ -20,13 +20,24 @@ except Exception:
     print('')
 " 2>/dev/null)
 
+TRANSCRIPT_PATH=$(python3 -c "
+import json
+try:
+    data = json.loads('''$INPUT''') if '''$INPUT'''.strip() else {}
+    print(data.get('transcript_path', ''))
+except Exception:
+    print('')
+" 2>/dev/null)
+
 # ── Determine state file ──
 if [ -n "$SESSION_ID" ]; then
     STATE_DIR="$HOME/.claude-panel/sessions/$SESSION_ID"
     mkdir -p "$STATE_DIR"
     STATE_FILE="$STATE_DIR/state.json"
+    PID_FILE="$STATE_DIR/curator_daemon.pid"
 else
     STATE_FILE="$HOME/.claude-panel/state.json"
+    PID_FILE=""
 fi
 
 # ── Instant loading indicator ──
@@ -47,10 +58,28 @@ except Exception: pass
 " 2>/dev/null
 fi
 
-# ── Run status curator (LLM-powered, updates status screen only) ──
+# ── Try daemon first, fall back to per-call curator ──
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Always use uv run to pick up latest source code
-echo "$INPUT" | uv run --directory "$PLUGIN_ROOT" python -m claude_panel.curator \
-    >> "$HOME/.claude-panel/curator.log" 2>&1
+DAEMON_RUNNING=false
+if [ -n "$PID_FILE" ] && [ -f "$PID_FILE" ]; then
+    DAEMON_PID=$(cat "$PID_FILE" 2>/dev/null)
+    if [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>/dev/null; then
+        DAEMON_RUNNING=true
+    fi
+fi
+
+if $DAEMON_RUNNING && [ -n "$SESSION_ID" ] && [ -n "$TRANSCRIPT_PATH" ]; then
+    # Nudge the daemon — just write a signal file, near-instant
+    python3 -c "
+import json, time
+path = '$STATE_DIR/curator_nudge.json'
+data = {'transcript_path': '$TRANSCRIPT_PATH', 'ts': time.time()}
+open(path, 'w').write(json.dumps(data))
+" 2>/dev/null
+else
+    # Fallback: run curator directly (slower, per-call subprocess)
+    echo "$INPUT" | uv run --directory "$PLUGIN_ROOT" python -m claude_panel.curator \
+        >> "$HOME/.claude-panel/curator.log" 2>&1
+fi

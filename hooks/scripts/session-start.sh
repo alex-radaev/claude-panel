@@ -72,7 +72,24 @@ else
     echo "0" > "$HOME/.claude-panel/.nudge_state" 2>/dev/null
 fi
 
-# Clean up stale sessions (from previous Claude Code runs that have exited)
+# Launch curator daemon for this session (persistent, warm client)
+if [ -n "$SESSION_ID" ]; then
+    DAEMON_PID_FILE="$HOME/.claude-panel/sessions/$SESSION_ID/curator_daemon.pid"
+    DAEMON_RUNNING=false
+    if [ -f "$DAEMON_PID_FILE" ]; then
+        DAEMON_PID=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
+        if [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>/dev/null; then
+            DAEMON_RUNNING=true
+        fi
+    fi
+    if ! $DAEMON_RUNNING; then
+        nohup uv run --directory "$PLUGIN_ROOT" python3 -m claude_panel.curator_daemon "$SESSION_ID" \
+            >> "$HOME/.claude-panel/curator.log" 2>&1 &
+        echo "CLAUDE-PANEL: Curator daemon started (PID $!)."
+    fi
+fi
+
+# Clean up stale sessions and their daemons
 uv run --directory "$PLUGIN_ROOT" python3 -c "
 from claude_panel.session import cleanup_stale_sessions
 removed = cleanup_stale_sessions()

@@ -150,6 +150,14 @@ def cleanup_stale_sessions() -> list[str]:
     for session_id in list_sessions():
         if session_id not in active_ids:
             sdir = session_state_dir(session_id)
+            # Kill curator daemon if running
+            pid_file = sdir / "curator_daemon.pid"
+            if pid_file.exists():
+                try:
+                    pid = int(pid_file.read_text().strip())
+                    os.kill(pid, 15)  # SIGTERM
+                except (ValueError, OSError):
+                    pass
             shutil.rmtree(sdir, ignore_errors=True)
             removed.append(session_id)
     return removed
