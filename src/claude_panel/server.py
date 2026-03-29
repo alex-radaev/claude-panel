@@ -10,7 +10,14 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from claude_panel.constants import CONTENT_DIR, PANEL_DIR, SCREENSAVERS_DIR, STATE_FILE
+from claude_panel.constants import (
+    CONTENT_DIR,
+    PANEL_DIR,
+    SCREENSAVERS_DIR,
+    STATE_FILE,
+    list_screensavers,
+    resolve_screensaver,
+)
 from claude_panel.session import (
     get_session_id,
     session_state_file,
@@ -336,9 +343,9 @@ async def panel(
     # ── Handle screensaver (ambient screen) ──
     if screensaver is not None:
         target = screen if screen is not None else "ambient"
-        path = SCREENSAVERS_DIR / f"{screensaver}.py"
-        if not path.exists():
-            available = [p.stem for p in SCREENSAVERS_DIR.glob("*.py")] if SCREENSAVERS_DIR.exists() else []
+        path = resolve_screensaver(screensaver)
+        if not path:
+            available = list_screensavers()
             return f"Screensaver '{screensaver}' not found. Available: {', '.join(available) or 'none'}"
         code = path.read_text()
         state = _ensure_multi(state)
@@ -481,9 +488,9 @@ async def screensaver_play(name: str) -> str:
 
     Prefer panel(screensaver=NAME) to make it the ambient screen.
     """
-    path = SCREENSAVERS_DIR / f"{name}.py"
-    if not path.exists():
-        available = [p.stem for p in SCREENSAVERS_DIR.glob("*.py")] if SCREENSAVERS_DIR.exists() else []
+    path = resolve_screensaver(name)
+    if not path:
+        available = list_screensavers()
         return f"Screensaver '{name}' not found. Available: {', '.join(available) or 'none'}"
 
     code = path.read_text()
@@ -493,13 +500,10 @@ async def screensaver_play(name: str) -> str:
 
 @mcp.tool()
 async def screensaver_list() -> str:
-    """List all saved screensavers."""
-    if not SCREENSAVERS_DIR.exists():
-        return "No screensavers saved yet."
-
-    names = sorted(p.stem for p in SCREENSAVERS_DIR.glob("*.py"))
+    """List all available screensavers (bundled + user-created)."""
+    names = list_screensavers()
     if not names:
-        return "No screensavers saved yet."
+        return "No screensavers available."
 
     return f"Available screensavers: {', '.join(names)}"
 

@@ -15,7 +15,6 @@ from typing import Any
 
 from claude_panel.constants import (
     PANEL_DIR,
-    SCREENSAVERS_DIR,
     STATE_FILE,
 )
 from claude_panel.session import (
