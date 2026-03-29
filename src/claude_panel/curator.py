@@ -310,6 +310,8 @@ STATUS_PROMPT_BASE = """\
 You curate a developer's side panel — a persistent display next to their Claude Code conversation. \
 {personality_intro}
 
+**Current time:** {current_time}
+
 ## Current panel state
 
 **Status:** {current_status}
@@ -447,9 +449,12 @@ def _format_history_section(history: list[dict[str, Any]]) -> str:
     """Format history entries for the prompt."""
     if not history:
         return ""
+    from datetime import datetime
     lines = ["## Recent panel states (for continuity)\n",
              "What was shown on the panel recently (by you and by Claude):\n"]
     for entry in history:
+        ts = entry.get("ts", 0)
+        time_str = datetime.fromtimestamp(ts).strftime("%H:%M") if ts else "?"
         main = entry.get("main", "")
         task = entry.get("task", "")
         ambient = entry.get("ambient", "")
@@ -460,7 +465,7 @@ def _format_history_section(history: list[dict[str, Any]]) -> str:
             parts.append(f"task: {task}")
         if ambient:
             parts.append(f"ambient: {ambient}")
-        lines.append(f"- {' · '.join(parts)}")
+        lines.append(f"- [{time_str}] {' · '.join(parts)}")
     lines.append("\nUse this for continuity — don't repeat yourself, build on what came before.\n")
     return "\n".join(lines)
 
@@ -468,11 +473,13 @@ def _format_history_section(history: list[dict[str, Any]]) -> str:
 def build_prompt(config: dict[str, Any], current_status: str, current_mood: str,
                  transcript: str, history: list[dict[str, Any]]) -> str:
     """Build the curator prompt with the configured personality and history."""
+    from datetime import datetime
     personality_name = config.get("curator_personality", "playful")
     personality = PERSONALITIES.get(personality_name, PERSONALITY_PLAYFUL)
 
     return STATUS_PROMPT_BASE.format(
         personality_intro=personality["intro"],
+        current_time=datetime.now().strftime("%Y-%m-%d %H:%M"),
         current_status=current_status,
         current_mood=current_mood,
         history_section=_format_history_section(history),

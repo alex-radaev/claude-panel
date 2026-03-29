@@ -136,9 +136,17 @@ panel(screensaver="tokyo-drift")   # change screensaver
 {
   "model": "claude-haiku-4-5-20251001",
   "favorite_screensaver": "tokyo-drift",
-  "update_every_n": 1
+  "update_every_n": 1,
+  "curator_personality": "playful"
 }
 ```
+
+| Option | Values | Description |
+|--------|--------|-------------|
+| `model` | Any Claude model ID | Model for the status curator (default: Haiku) |
+| `favorite_screensaver` | Screensaver name | Default ambient screensaver |
+| `update_every_n` | Number | Update status every N responses (1 = every time) |
+| `curator_personality` | `"playful"`, `"professional"` | Curator tone — playful adds humor and emoji combos, professional is concise and factual |
 
 ## Contributing
 
