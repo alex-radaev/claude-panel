@@ -304,7 +304,7 @@ DEFAULT_CONFIG = {
     "curator_personality": "playful",
 }
 
-MAX_HISTORY_ENTRIES = 8
+MAX_HISTORY_ENTRIES = 4
 
 STATUS_PROMPT_BASE = """\
 You curate a developer's side panel — a persistent display next to their Claude Code conversation. \
