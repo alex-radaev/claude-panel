@@ -55,17 +55,64 @@ def read_state(session_id: str | None = None) -> dict[str, Any]:
         return {}
 
 
+def _log_panel_state(state: dict[str, Any], parent_dir: Path) -> None:
+    """Append a snapshot of the full panel state to history log."""
+    try:
+        screens = state.get("screens", {})
+        if not screens:
+            return
+
+        entry: dict[str, Any] = {"ts": time.time()}
+
+        # Main screen
+        main = screens.get("main", {})
+        stype = main.get("type", "")
+        if stype == "mood":
+            entry["main"] = f"{main.get('emoji', '')} {main.get('context', '')}"
+        elif stype == "sections":
+            titles = [s.get("title", "") for s in main.get("sections", [])[:3]]
+            entry["main"] = " | ".join(titles)
+
+        # Status screen
+        status = screens.get("status", {})
+        if status.get("type") == "sections":
+            for s in status.get("sections", []):
+                if s.get("id") == "task":
+                    entry["task"] = s.get("content", "")[:100]
+                    break
+
+        # Ambient screen
+        ambient = screens.get("ambient", {})
+        if ambient.get("type") == "screensaver":
+            entry["ambient"] = ambient.get("name", "?")
+
+        history_file = parent_dir / "curator_history.jsonl"
+        lines = []
+        if history_file.exists():
+            lines = history_file.read_text().strip().splitlines()
+        lines.append(json.dumps(entry))
+        if len(lines) > MAX_HISTORY_ENTRIES * 3:
+            lines = lines[-MAX_HISTORY_ENTRIES:]
+        history_file.write_text("\n".join(lines) + "\n")
+    except Exception:
+        pass  # never break state writes for logging
+
+
 def write_state(state: dict[str, Any], session_id: str | None = None) -> None:
     """Atomically write state, clearing loading flag.
 
     When session_id is provided, writes to the per-session state file
-    and marks this session as active.
+    and marks this session as active. Also logs main screen changes to
+    curator_history.jsonl for continuity.
     """
     state_file, parent_dir = _resolve_state_file(session_id)
     parent_dir.mkdir(parents=True, exist_ok=True)
     state.pop("loading", None)
     state.pop("loading_message", None)
     state["ts"] = time.time()
+
+    # Log main screen content for curator continuity
+    _log_panel_state(state, parent_dir)
 
     fd, tmp_path = tempfile.mkstemp(dir=str(parent_dir), suffix=".tmp")
     try:
@@ -254,18 +301,24 @@ DEFAULT_CONFIG = {
     "model": "claude-haiku-4-5-20251001",
     "favorite_screensaver": "tokyo-drift",
     "update_every_n": 1,
+    "curator_personality": "playful",
 }
 
-STATUS_PROMPT = """\
+MAX_HISTORY_ENTRIES = 4
+
+STATUS_PROMPT_BASE = """\
 You curate a developer's side panel — a persistent display next to their Claude Code conversation. \
-Your goal: **show context that saves the user from scrolling back**. The panel is a second \
-communication channel that makes coding more efficient.
+{personality_intro}
+
+**Current time:** {current_time}
 
 ## Current panel state
 
 **Status:** {current_status}
 
 **Main screen:** {current_mood}
+
+{history_section}
 
 ## Recent conversation
 
@@ -274,15 +327,15 @@ communication channel that makes coding more efficient.
 ## What to update
 
 ### Status screen (structured dashboard — always update)
-- **task** — Current goal. One line.
+- **task** — Current goal. One line. Be specific, not generic.
 - **files** — Files changed/discussed. Bullet list with one-line descriptions.
-- **decisions** — Non-obvious choices made and why.
+- **decisions** — Non-obvious choices made and why. Capture the *why* — that's what people forget.
 
 ### Main screen (your creative canvas)
 
 Ask yourself: **"What would help the user right now if pinned on screen?"**
 
-**Show rich content when there's something concrete to display:**
+**Show rich content when there's something concrete:**
 
 | Situation | What to show |
 |-----------|-------------|
@@ -294,7 +347,7 @@ Ask yourself: **"What would help the user right now if pinned on screen?"**
 | Config/setup work | The relevant config snippet or command |
 | Code review | Key findings and action items |
 
-**Show a mood emoji for simple/ambient states:**
+**Show a mood emoji for ambient/simple states:**
 
 | Emoji | When |
 |-------|------|
@@ -302,14 +355,20 @@ Ask yourself: **"What would help the user right now if pinned on screen?"**
 | 🎯 | Clear goal, executing |
 | 🏗️ | Building something new |
 | 🎉 | Just completed a milestone |
-| ☕ | Idle, casual chat, nothing to show |
+| ☕ | Idle, casual chat, vibing |
 | 🤔 | Investigating, unsure |
 | 🐛 | Chasing a bug |
 | 💡 | Had an insight |
 | 🚀 | Shipping, committing |
+| 🧹 | Cleaning up, refactoring |
+| 🎪 | Something wild or unexpected happening |
+| 🌊 | In flow state, deep work |
+| 🍕 | It's been a long session, maybe take a break? |
+
+{personality_guidelines}
 
 Default to rich content when the conversation has substance. Use emoji when there's \
-nothing specific to pin — it keeps the panel alive and fun.
+nothing specific to pin. Either way, keep it **alive**.
 
 ## Response format
 
@@ -317,10 +376,10 @@ CRITICAL: Return ONLY a single JSON object. No text before or after. No explanat
 Just the raw JSON. If you write anything other than JSON, the panel breaks.
 
 **Rich content (preferred when there's substance):**
-{{"task": "...", "files": "...", "decisions": "...", "emoji": "🔥", "main_mode": "sections", "main_sections": [{{"id": "what-changed", "title": "What Changed", "content": "`auth.py` — added JWT middleware\\n\\n```python\\nasync def verify_token(token: str):\\n    ...\\n```"}}, {{"id": "next", "title": "Next Steps", "content": "- [ ] Add refresh token logic\\n- [ ] Write tests"}}]}}
+{{"task": "...", "files": "...", "decisions": "...", "emoji": "🔥", "main_mode": "sections", "main_sections": [{{"id": "what-changed", "title": "🔥 What Changed", "content": "`auth.py` — added JWT middleware\\n\\n```python\\nasync def verify_token(token: str):\\n    ...\\n```"}}, {{"id": "next", "title": "Next Steps", "content": "- [ ] Add refresh token logic\\n- [ ] Write tests"}}]}}
 
 **Mood emoji (for ambient/simple states):**
-{{"task": "...", "files": "...", "decisions": "...", "emoji": "☕", "main_mode": "mood", "context": "Waiting for next task"}}
+{{"task": "...", "files": "...", "decisions": "...", "emoji": "☕", "main_mode": "mood", "context": "{mood_example}"}}
 
 Rules:
 - **Always include emoji** — it appears in the section title (rich) or as the main display (mood).
@@ -329,7 +388,106 @@ Rules:
 - Use markdown: **bold**, `code`, ```code blocks```, bullet lists, checkboxes `- [x]`.
 - Section IDs: lowercase, hyphens only.
 - Rich sections: 1-3 sections max. Don't overload.
+{personality_closing}
 """
+
+PERSONALITY_PLAYFUL = {
+    "intro": "You're the DJ of this panel: keep it informative, but also **alive, fun, and surprising**. "
+             "The user glances at you between code — reward that glance with something worth seeing.",
+    "guidelines": """### Personality guidelines
+
+- **Be playful.** Dry status updates are boring. Add wit, observations, gentle humor.
+- **Surprise the user sometimes.** Drop a fun comment, a relevant joke, an unexpected emoji combo.
+- **Read the room.** If the conversation is intense debugging, match the energy. If it's casual, be casual.
+- **Use the tip/context line creatively:**
+  - Instead of "Working on auth" → "Teaching the app to check IDs at the door 🪪"
+  - Instead of "3 files changed" → "3 files got the glow-up treatment ✨"
+  - Instead of "Waiting for next task" → "Stretching... ready when you are 🧘"
+  - Instead of "Bug fixed" → "Squished it. The bug had it coming 🪲💀"
+- **Use emoji combos** in context lines for extra flavor (🔥⚡, 🐛🔍, 🚀✨).
+- **If the session has been going a while**, gently suggest a break or acknowledge the grind.
+- **If something genuinely cool was accomplished**, celebrate it — don't undersell.""",
+    "mood_example": "Stretching... ready when you are 🧘",
+    "closing": "- **Have personality.** You're not a log file, you're a co-pilot with a sense of humor.",
+}
+
+PERSONALITY_PROFESSIONAL = {
+    "intro": "Your goal: **show context that saves the user from scrolling back**. The panel is a second "
+             "communication channel that makes coding more efficient.",
+    "guidelines": """### Tone guidelines
+
+- **Be concise and clear.** Every word should earn its place.
+- **Focus on actionable info.** What changed, what's next, what to watch out for.
+- **Match the work.** Technical precision over flair.
+- **Use context lines for useful info**, not commentary.""",
+    "mood_example": "Waiting for next task",
+    "closing": "- **Be precise.** Useful beats clever.",
+}
+
+PERSONALITIES = {
+    "playful": PERSONALITY_PLAYFUL,
+    "professional": PERSONALITY_PROFESSIONAL,
+}
+
+
+def _read_history(session_id: str | None) -> list[dict[str, Any]]:
+    """Read recent main screen updates for curator continuity."""
+    if session_id:
+        history_file = session_state_file(session_id).parent / "curator_history.jsonl"
+    else:
+        history_file = PANEL_DIR / "curator_history.jsonl"
+    if not history_file.exists():
+        return []
+    try:
+        lines = history_file.read_text().strip().splitlines()
+        return [json.loads(line) for line in lines[-MAX_HISTORY_ENTRIES:]]
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def _format_history_section(history: list[dict[str, Any]]) -> str:
+    """Format history entries for the prompt."""
+    if not history:
+        return ""
+    from datetime import datetime
+    lines = ["## Recent panel states (for continuity)\n",
+             "What was shown on the panel recently (by you and by Claude):\n"]
+    for entry in history:
+        ts = entry.get("ts", 0)
+        time_str = datetime.fromtimestamp(ts).strftime("%H:%M") if ts else "?"
+        main = entry.get("main", "")
+        task = entry.get("task", "")
+        ambient = entry.get("ambient", "")
+        parts = []
+        if main:
+            parts.append(f"main: {main}")
+        if task:
+            parts.append(f"task: {task}")
+        if ambient:
+            parts.append(f"ambient: {ambient}")
+        lines.append(f"- [{time_str}] {' · '.join(parts)}")
+    lines.append("\nUse this for continuity — don't repeat yourself, build on what came before.\n")
+    return "\n".join(lines)
+
+
+def build_prompt(config: dict[str, Any], current_status: str, current_mood: str,
+                 transcript: str, history: list[dict[str, Any]]) -> str:
+    """Build the curator prompt with the configured personality and history."""
+    from datetime import datetime
+    personality_name = config.get("curator_personality", "playful")
+    personality = PERSONALITIES.get(personality_name, PERSONALITY_PLAYFUL)
+
+    return STATUS_PROMPT_BASE.format(
+        personality_intro=personality["intro"],
+        current_time=datetime.now().strftime("%Y-%m-%d %H:%M"),
+        current_status=current_status,
+        current_mood=current_mood,
+        history_section=_format_history_section(history),
+        transcript=transcript,
+        personality_guidelines=personality["guidelines"],
+        mood_example=personality["mood_example"],
+        personality_closing=personality["closing"],
+    )
 
 
 def read_config() -> dict[str, Any]:
@@ -419,10 +577,15 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
     main_screen = state.get("screens", {}).get("main", {})
     current_mood = f"{main_screen.get('emoji', '?')} — {main_screen.get('context', 'not set')}" if main_screen.get("emoji") else "Not set"
 
-    prompt = STATUS_PROMPT.format(
+    # Read history for continuity
+    history = _read_history(session_id)
+
+    prompt = build_prompt(
+        config=config,
         current_status=current_status,
         current_mood=current_mood,
         transcript=transcript,
+        history=history,
     )
 
     model = config.get("model", DEFAULT_CONFIG["model"])
@@ -431,7 +594,7 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
     try:
         from claude_agent_sdk import query as sdk_query, ClaudeAgentOptions
 
-        options = ClaudeAgentOptions(model=model, max_turns=1)
+        options = ClaudeAgentOptions(model=model, max_turns=1, output_format="json")
         result_text = ""
 
         async for message in sdk_query(prompt=prompt, options=options):
