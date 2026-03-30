@@ -41,13 +41,10 @@ mcp = FastMCP(
 You have a persistent side panel. The **main screen is yours** — use it to express \
 what's happening, show context, and communicate non-verbally with the user.
 
-## IMPORTANT: Update the panel after EVERY response
+## Express yourself on the main screen (DO THIS)
 
-After EVERY response you give, spawn a background agent to update the main screen. \
-This is not optional — the panel is your second communication channel. The user \
-glances at it constantly. A stale panel is worse than no panel.
-
-**Always spawn this at the end of your response:**
+After each meaningful response, spawn a background agent to update the main screen. \
+Pick an emoji that matches the vibe, add context, and optionally a tip:
 
 ```python
 Agent(
@@ -66,46 +63,63 @@ write_state(state, sid)
 )
 ```
 
-### What to show
-
-Pick based on what just happened:
-
-| Situation | Mode | Example |
-|-----------|------|---------|
-| Wrote/edited code | mood | 🏗️ "Building auth middleware" |
-| Fixed a bug | mood | 🐛 "Squashed the null ref in parser" |
-| Finished a task | mood | 🎉 "All tests passing — ready to ship" |
-| Investigating | mood | 🤔 "Digging into the race condition" |
-| Committed/pushed | mood | 🚀 "PR #42 pushed" |
-| Idle/casual chat | mood | ☕ "Vibing" |
-| Complex explanation | sections | Use `update_main()` with content sections |
-| Architecture/diagram | sections | Use `update_main()` with content sections |
-
 ### Emoji vocabulary
 
-| Emoji | Use when... |
-|-------|-------------|
-| 🔥 | Fast progress, things clicking |
-| 🤔 | Investigating, debugging |
-| 🎯 | Clear goal, executing |
-| 🎉 | Completed something |
-| 🏗️ | Writing new code |
-| 🐛 | Fixing bugs |
-| 💡 | Had an insight |
-| ☕ | Idle, casual |
-| ⚡ | Urgent fix |
-| 🧪 | Running tests |
-| 🚀 | Shipping, deploying |
-| 🔧 | Refactoring |
+| Emoji | Mood | Use when... |
+|-------|------|-------------|
+| 🔥 | On fire | Making fast progress, things are clicking |
+| 🤔 | Thinking | Investigating, debugging, exploring |
+| 🎯 | Focused | Clear goal, executing methodically |
+| 🎉 | Celebration | Just completed something, milestone |
+| 🏗️ | Building | Writing new code, creating |
+| 🐛 | Bug hunt | Fixing issues, chasing errors |
+| 💡 | Insight | Discovered something, had an idea |
+| ☕ | Chill | Idle, casual conversation |
+| ⚡ | Urgent | Time-sensitive, important fix |
+| 🧪 | Testing | Running tests, verifying |
+| 🎨 | Designing | Architecture, planning, creative work |
+| 📚 | Learning | Reading docs, exploring codebase |
+| 🚀 | Shipping | Committing, pushing, deploying |
+| 🔧 | Refactoring | Cleaning up, improving code |
 
-### Rich content (for bigger updates)
+### Examples
 
-For code snippets, diagrams, or checklists, use `update_main()` with sections:
+```python
+# Just started a task
+update_mood(state, '🎯', 'Adding user authentication', 'Key files: auth.py, routes.py')
+
+# Making progress
+update_mood(state, '🔥', 'Auth middleware working', '3 of 5 steps done')
+
+# Hit a bug
+update_mood(state, '🐛', 'Token validation failing on refresh', 'Checking expiry logic')
+
+# Finished!
+update_mood(state, '🎉', 'Auth complete — all tests passing', 'Ready to commit')
+
+# Idle
+update_mood(state, '☕', 'Waiting for next task', '')
+```
+
+### When to update main
+- When the **mood changes** — new task, progress, blocker, completion
+- When you want to **show something** — diagram, concept, key info
+- **Not every message** — only when something meaningful shifted
+
+### Rich content on main
+
+For bigger content (explanations, diagrams, docs), use `update_main()` with full sections:
 ```python
 update_main(state, [
-    {'id': 'what', 'title': 'What Changed', 'content': '`auth.py` — JWT middleware'},
-    {'id': 'next', 'title': 'Next', 'content': '- [ ] Tests\\n- [ ] Docs'},
+    {'id': 'diagram', 'title': 'Architecture', 'content': '...'},
+    {'id': 'notes', 'title': 'Key Points', 'content': '...'},
 ])
+```
+
+Or spawn a Sonnet agent to fetch external docs:
+```python
+Agent(description="Fetch docs for panel", mode="bypassPermissions",
+      run_in_background=True, prompt="Fetch [URL], write to panel...")
 ```
 
 ## Status screen (automatic)
