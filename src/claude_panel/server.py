@@ -38,14 +38,17 @@ STANDARD_ORDER = ["main", "status", "ambient"]
 mcp = FastMCP(
     "claude-panel",
     instructions="""\
-You have a persistent side panel. The **main screen is yours** — use it to express \
-what's happening, show context, and communicate non-verbally with the user.
+You have a persistent side panel with two key screens:
+
+- **MAIN** = your active working surface (you control this)
+- **STATUS** = durable memory (auto-updated by the curator hook)
 
 ## Express yourself on the main screen (DO THIS)
 
 After each meaningful response, spawn a background agent to update the main screen. \
-Pick an emoji that matches the vibe, add context, and optionally a tip:
+Choose the most useful content type for the moment:
 
+**Mood update** (for ambient/simple states — idle, casual, no concrete working content):
 ```python
 Agent(
     description="Update panel",
@@ -63,69 +66,70 @@ write_state(state, sid)
 )
 ```
 
+**Rich content** (preferred when there's concrete substance — code, debugging, architecture, plans):
+```python
+Agent(
+    description="Update panel",
+    mode="bypassPermissions",
+    run_in_background=True,
+    prompt=\"\"\"Run this bash command:
+python3 -c "
+from claude_panel.curator import read_state, write_state, update_main
+from claude_panel.session import get_session_id
+sid = get_session_id()
+state = read_state(sid)
+state = update_main(state, [
+    {'id': 'what', 'title': '🔥 What Changed', 'content': 'description here'},
+    {'id': 'next', 'title': 'Next', 'content': '- [ ] item 1\\n- [ ] item 2'},
+])
+write_state(state, sid)
+"\"\"\"
+)
+```
+
+### Content type selection
+
+| Content type | When to use |
+|--------------|-------------|
+| focus_snippet | A code snippet, schema, or contract is central right now |
+| immediate_plan | Short near-term plan, 3–5 bullets |
+| files_in_play | Files central to the work — include *why* they matter |
+| recent_changes | Concise summary of what changed |
+| blocker | Current unresolved issue or hypothesis |
+| flow_or_schema | Architecture flow, data flow, decision tree |
+| handoff | "What changed / where we are / what's next" |
+| mood | Playful filler, vibe — only when no concrete working content exists |
+
+**Priority:** If there is concrete coding substance, prefer rich content over mood. \
+Use mood when things are idle or casual.
+
+**Preserve useful content:** Don't replace an already-useful MAIN screen with weaker filler.
+
 ### Emoji vocabulary
 
-| Emoji | Mood | Use when... |
-|-------|------|-------------|
-| 🔥 | On fire | Making fast progress, things are clicking |
-| 🤔 | Thinking | Investigating, debugging, exploring |
-| 🎯 | Focused | Clear goal, executing methodically |
-| 🎉 | Celebration | Just completed something, milestone |
-| 🏗️ | Building | Writing new code, creating |
-| 🐛 | Bug hunt | Fixing issues, chasing errors |
-| 💡 | Insight | Discovered something, had an idea |
-| ☕ | Chill | Idle, casual conversation |
-| ⚡ | Urgent | Time-sensitive, important fix |
-| 🧪 | Testing | Running tests, verifying |
-| 🎨 | Designing | Architecture, planning, creative work |
-| 📚 | Learning | Reading docs, exploring codebase |
-| 🚀 | Shipping | Committing, pushing, deploying |
-| 🔧 | Refactoring | Cleaning up, improving code |
-
-### Examples
-
-```python
-# Just started a task
-update_mood(state, '🎯', 'Adding user authentication', 'Key files: auth.py, routes.py')
-
-# Making progress
-update_mood(state, '🔥', 'Auth middleware working', '3 of 5 steps done')
-
-# Hit a bug
-update_mood(state, '🐛', 'Token validation failing on refresh', 'Checking expiry logic')
-
-# Finished!
-update_mood(state, '🎉', 'Auth complete — all tests passing', 'Ready to commit')
-
-# Idle
-update_mood(state, '☕', 'Waiting for next task', '')
-```
+| Emoji | Use when... |
+|-------|-------------|
+| 🔥 | Fast progress, things clicking |
+| 🤔 | Investigating, debugging |
+| 🎯 | Clear goal, executing |
+| 🎉 | Completed a milestone |
+| 🏗️ | Building something new |
+| 🐛 | Fixing bugs |
+| 💡 | Had an insight |
+| ☕ | Idle, casual |
+| ⚡ | Urgent fix |
+| 🚀 | Shipping, deploying |
+| 🔧 | Refactoring |
 
 ### When to update main
 - When the **mood changes** — new task, progress, blocker, completion
-- When you want to **show something** — diagram, concept, key info
+- When you want to **show something** — snippet, plan, diagram, key info
 - **Not every message** — only when something meaningful shifted
-
-### Rich content on main
-
-For bigger content (explanations, diagrams, docs), use `update_main()` with full sections:
-```python
-update_main(state, [
-    {'id': 'diagram', 'title': 'Architecture', 'content': '...'},
-    {'id': 'notes', 'title': 'Key Points', 'content': '...'},
-])
-```
-
-Or spawn a Sonnet agent to fetch external docs:
-```python
-Agent(description="Fetch docs for panel", mode="bypassPermissions",
-      run_in_background=True, prompt="Fetch [URL], write to panel...")
-```
 
 ## Status screen (automatic)
 
 The status screen auto-updates via a Stop hook — you don't need to manage it. \
-It shows: current task, files changed, decisions made.
+It shows: objective, decisions, constraints, and open questions.
 
 ## Reading the panel
 
