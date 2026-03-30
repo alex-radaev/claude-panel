@@ -627,12 +627,13 @@ end tell
 """
 
 
-def _open_macos(project_dir: str) -> str:
+def _open_macos(project_dir: str, session_id: str | None = None) -> str:
     """Open panel in iTerm2 vertical split (macOS)."""
+    session_flag = f" --session {session_id}" if session_id else ""
     if project_dir:
-        cmd = f"cd '{project_dir}' && uv run claude-panel"
+        cmd = f"cd '{project_dir}' && uv run claude-panel{session_flag}"
     else:
-        cmd = "claude-panel"
+        cmd = f"claude-panel{session_flag}"
     script = _OPEN_APPLESCRIPT.format(cmd=cmd)
     try:
         subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
@@ -643,13 +644,14 @@ def _open_macos(project_dir: str) -> str:
         return "osascript not found. Install iTerm2 or run `claude-panel` manually in a side terminal."
 
 
-def _open_wsl(project_dir: str) -> str:
+def _open_wsl(project_dir: str, session_id: str | None = None) -> str:
     """Open panel in Windows Terminal vertical split (WSL)."""
     distro = os.environ.get("WSL_DISTRO_NAME", "Ubuntu")
+    session_flag = f" --session {session_id}" if session_id else ""
     if project_dir:
-        cmd = f"cd '{project_dir}' && uv run claude-panel"
+        cmd = f"cd '{project_dir}' && uv run claude-panel{session_flag}"
     else:
-        cmd = "claude-panel"
+        cmd = f"claude-panel{session_flag}"
     try:
         subprocess.run(
             [
@@ -677,13 +679,15 @@ async def panel_open() -> str:
     """
     project_dir = _get_project_dir()
     platform = _detect_platform()
+    session_id = get_session_id()
 
     if platform == "macos":
-        return _open_macos(project_dir)
+        return _open_macos(project_dir, session_id)
     elif platform == "wsl":
-        return _open_wsl(project_dir)
+        return _open_wsl(project_dir, session_id)
     else:
-        return "Unsupported platform. Run `claude-panel` manually in a side terminal."
+        session_hint = f" --session {session_id}" if session_id else ""
+        return f"Unsupported platform. Run `claude-panel{session_hint}` manually in a side terminal."
 
 
 def main():
