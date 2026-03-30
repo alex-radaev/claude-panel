@@ -670,8 +670,9 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
         updates = json.loads(text)
 
         # Apply status updates (skip nulls, ensure strings)
+        CANONICAL_STATUS = ("objective", "decisions", "constraints", "open_questions")
         changed = False
-        for field in ("objective", "decisions", "constraints", "open_questions"):
+        for field in CANONICAL_STATUS:
             value = updates.get(field)
             if value is not None:
                 # LLM sometimes returns lists instead of strings
@@ -679,6 +680,17 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
                     value = "\n".join(f"- {v}" if not v.startswith("-") else v for v in value)
                 state = update_status_section(state, field, str(value))
                 changed = True
+
+        # Drop stale sections and enforce canonical order
+        screens = state.get("screens", {})
+        status_screen = screens.get("status", {})
+        if status_screen.get("type") == "sections":
+            by_id = {s.get("id"): s for s in status_screen.get("sections", [])}
+            status_screen["sections"] = [
+                by_id[sid] for sid in CANONICAL_STATUS if sid in by_id
+            ]
+            screens["status"] = status_screen
+            state["screens"] = screens
 
         # Apply main screen update — curator decides mood vs rich content
         main_mode = updates.get("main_mode", "mood")
