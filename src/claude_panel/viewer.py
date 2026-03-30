@@ -21,6 +21,9 @@ from textual.widgets import Footer, Header, Markdown, RichLog, Static
 from claude_panel.constants import CONTENT_DIR, POLL_INTERVAL, STATE_FILE
 from claude_panel.session import get_active_session, session_state_file
 
+# Set by --session CLI arg; when set, viewer ignores the global active_session pointer
+_pinned_session_id: str | None = None
+
 
 class SectionPanel(Static):
     """A single content section rendered as a bordered panel with markdown."""
@@ -195,10 +198,11 @@ class PanelViewer(App):
     def _resolve_state_file(self) -> Any:
         """Determine which state file to poll.
 
-        Checks active_session first; falls back to the global state.json.
+        If a session was pinned via --session, always use that.
+        Otherwise checks active_session; falls back to the global state.json.
         Forces re-render when the active session changes.
         """
-        active_id = get_active_session()
+        active_id = _pinned_session_id or get_active_session()
         if active_id != self._current_session_id:
             self._current_session_id = active_id
             self.last_ts = 0.0  # force re-render on session switch
@@ -550,6 +554,15 @@ class PanelViewer(App):
 
 
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Claude Panel viewer")
+    parser.add_argument("--session", help="Pin viewer to a specific session ID")
+    args = parser.parse_args()
+
+    global _pinned_session_id
+    _pinned_session_id = args.session
+
     app = PanelViewer()
     app.run()
 
