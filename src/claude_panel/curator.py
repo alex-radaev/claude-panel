@@ -29,9 +29,10 @@ from claude_panel.session import (
 STANDARD_ORDER = ["main", "status", "ambient"]
 
 STATUS_SECTIONS = [
-    {"id": "task", "title": "Current Task", "content": "*Not set*"},
-    {"id": "files", "title": "Files Changed", "content": "*None yet*"},
+    {"id": "objective", "title": "Objective", "content": "*Not set*"},
     {"id": "decisions", "title": "Decisions", "content": "*None yet*"},
+    {"id": "constraints", "title": "Constraints", "content": "*None yet*"},
+    {"id": "open_questions", "title": "Open Questions", "content": "*None yet*"},
 ]
 
 
@@ -77,8 +78,8 @@ def _log_panel_state(state: dict[str, Any], parent_dir: Path) -> None:
         status = screens.get("status", {})
         if status.get("type") == "sections":
             for s in status.get("sections", []):
-                if s.get("id") == "task":
-                    entry["task"] = s.get("content", "")[:100]
+                if s.get("id") == "objective":
+                    entry["objective"] = s.get("content", "")[:100]
                     break
 
         # Ambient screen
@@ -324,30 +325,67 @@ You curate a developer's side panel — a persistent display next to their Claud
 
 {transcript}
 
+## Screen roles
+
+**STATUS = durable memory.** Information that remains useful across many turns, after a break, \
+or tomorrow morning. Calm, sticky, reliable. Not a live progress feed.
+
+**MAIN = active working surface.** Fluid, dynamic, updates often. Shows the most useful current \
+representation for the human right now. Reduces cognitive load during active work.
+
+STATUS and MAIN complement each other: STATUS stores durable conclusions, MAIN explores and \
+elaborates current details. Avoid blind duplication — MAIN may expand a STATUS item into a \
+snippet, flow, or plan.
+
 ## What to update
 
-### Status screen (structured dashboard — always update)
-- **task** — Current goal. One line. Be specific, not generic.
-- **files** — Files changed/discussed. Bullet list with one-line descriptions.
-- **decisions** — Non-obvious choices made and why. Capture the *why* — that's what people forget.
+### Status screen (durable memory — always update)
 
-### Main screen (your creative canvas)
+Use this test: *"Would this still be worth showing 20 messages later, after a break, or tomorrow morning?"*
 
-Ask yourself: **"What would help the user right now if pinned on screen?"**
+- **objective** — Stable goal, milestone, or workstream. Higher-level than a short task. \
+Should not change every few messages unless the workstream truly changes. \
+Good: "make tenant-aware session validation correct". Bad: "inspect helper", "rerun tests".
+- **decisions** — Durable choices already made. Concise and factual. \
+Example: "use tenant-agnostic session validation", "tenant is encoded in cookie name".
+- **constraints** — Assumptions, invariants, limitations, boundaries the implementation must respect. \
+Example: "Firebase tenant-aware session cookies are not available", "cookie tenant must match JWT claim".
+- **open_questions** — Unresolved design issues, risks, or uncertainties worth keeping visible. \
+Example: "should logout clear one tenant cookie or all?", "do production SameSite rules differ from dev?"
 
-**Show rich content when there's something concrete:**
+Do NOT put transient activity (recent file edits, momentary debug details) in STATUS. \
+Files may appear only occasionally as long-lived key surfaces in semantic form \
+(e.g. "auth.py — validation logic").
 
-| Situation | What to show |
-|-----------|-------------|
-| Claude edited code | The key function/interface that changed |
-| API/architecture discussion | Endpoint table, data flow diagram |
-| Debugging | Error message + current hypothesis |
-| Multi-step task | Progress checklist with [x] items |
-| Complex explanation | The core concept as a diagram or summary |
-| Config/setup work | The relevant config snippet or command |
-| Code review | Key findings and action items |
+{personality_status_note}
 
-**Show a mood emoji for ambient/simple states:**
+### Main screen (active working surface)
+
+MAIN should update frequently. Do NOT throttle it. Do NOT make it mostly static.
+
+**Before writing MAIN, choose the most useful content type for the current moment:**
+
+| Content type | When to use |
+|--------------|-------------|
+| focus_snippet | A code snippet, pseudocode, schema, or contract is central right now |
+| immediate_plan | Short near-term plan, 3–5 bullets, active attack plan |
+| files_in_play | Files currently central to the work — include *why* they matter |
+| recent_changes | Concise human summary of what changed (not a raw diff) |
+| blocker | Current unresolved issue, hypothesis, edge case, failure mode |
+| flow_or_schema | Architecture flow, data flow, logic flow, decision tree |
+| handoff | "What changed / where we are / what's next" state summary |
+| mood | Playful filler, vibe, celebration — valid when no concrete working content exists |
+
+**Selection priority:**
+- If there is concrete coding substance → prefer focus_snippet / blocker / immediate_plan / recent_changes / flow_or_schema over mood
+- If the turn is mostly coordination → prefer handoff / immediate_plan / recent_changes over mood
+- If the turn is light, idle, or has little concrete signal → mood is fine
+
+**Preserve useful content:** Do not replace an already-useful MAIN screen with a weaker one \
+just because there is a fresh opportunity to update. Only replace useful content with content \
+that is at least as useful or more useful.
+
+**Emoji vocabulary (for mood and section titles):**
 
 | Emoji | When |
 |-------|------|
@@ -363,12 +401,12 @@ Ask yourself: **"What would help the user right now if pinned on screen?"**
 | 🧹 | Cleaning up, refactoring |
 | 🎪 | Something wild or unexpected happening |
 | 🌊 | In flow state, deep work |
-| 🍕 | It's been a long session, maybe take a break? |
+| 🍕 | Long session, maybe take a break? |
 
 {personality_guidelines}
 
-Default to rich content when the conversation has substance. Use emoji when there's \
-nothing specific to pin. Either way, keep it **alive**.
+**Core principle:** Prefer reducing cognitive load over being entertaining. \
+Personality is decoration on top of usefulness, not a replacement for usefulness.
 
 ## Response format
 
@@ -376,10 +414,10 @@ CRITICAL: Return ONLY a single JSON object. No text before or after. No explanat
 Just the raw JSON. If you write anything other than JSON, the panel breaks.
 
 **Rich content (preferred when there's substance):**
-{{"task": "...", "files": "...", "decisions": "...", "emoji": "🔥", "main_mode": "sections", "main_sections": [{{"id": "what-changed", "title": "🔥 What Changed", "content": "`auth.py` — added JWT middleware\\n\\n```python\\nasync def verify_token(token: str):\\n    ...\\n```"}}, {{"id": "next", "title": "Next Steps", "content": "- [ ] Add refresh token logic\\n- [ ] Write tests"}}]}}
+{{"objective": "...", "decisions": "...", "constraints": "...", "open_questions": "...", "emoji": "🔥", "main_mode": "sections", "main_sections": [{{"id": "what-changed", "title": "🔥 What Changed", "content": "`auth.py` — added JWT middleware\\n\\n```python\\nasync def verify_token(token: str):\\n    ...\\n```"}}, {{"id": "next", "title": "Next Steps", "content": "- [ ] Add refresh token logic\\n- [ ] Write tests"}}]}}
 
 **Mood emoji (for ambient/simple states):**
-{{"task": "...", "files": "...", "decisions": "...", "emoji": "☕", "main_mode": "mood", "context": "{mood_example}"}}
+{{"objective": "...", "decisions": "...", "constraints": "...", "open_questions": "...", "emoji": "☕", "main_mode": "mood", "context": "{mood_example}"}}
 
 Rules:
 - **Always include emoji** — it appears in the section title (rich) or as the main display (mood).
@@ -393,27 +431,36 @@ Rules:
 
 PERSONALITY_PLAYFUL = {
     "intro": "You're the DJ of this panel: keep it informative, but also **alive, fun, and surprising**. "
-             "The user glances at you between code — reward that glance with something worth seeing.",
+             "The user glances at you between code — reward that glance with something worth seeing. "
+             "Playfulness is a layer on top of usefulness, not a substitute for usefulness.",
+    "status_note": "STATUS tone: keep it mostly neutral. You may slightly warm section phrasing, "
+                   "but decisions, constraints, and risks must stay unambiguous. "
+                   "Playful flavor belongs mostly on MAIN, not inside durable STATUS facts.",
     "guidelines": """### Personality guidelines
 
-- **Be playful.** Dry status updates are boring. Add wit, observations, gentle humor.
-- **Surprise the user sometimes.** Drop a fun comment, a relevant joke, an unexpected emoji combo.
-- **Read the room.** If the conversation is intense debugging, match the energy. If it's casual, be casual.
-- **Use the tip/context line creatively:**
+- **Be useful first, charming second.** Every MAIN update should earn its place with real content. \
+Wit is the garnish, not the meal.
+- **Read the room.** If the conversation is intense debugging, match the energy with a concrete \
+blocker/snippet/plan. If it's casual, mood and playfulness are welcome.
+- **Surprise the user sometimes.** Drop a fun comment, a relevant joke, an unexpected emoji combo — \
+but only when there isn't better concrete content to show.
+- **Use the context/tip line creatively on mood screens:**
   - Instead of "Working on auth" → "Teaching the app to check IDs at the door 🪪"
-  - Instead of "3 files changed" → "3 files got the glow-up treatment ✨"
   - Instead of "Waiting for next task" → "Stretching... ready when you are 🧘"
   - Instead of "Bug fixed" → "Squished it. The bug had it coming 🪲💀"
 - **Use emoji combos** in context lines for extra flavor (🔥⚡, 🐛🔍, 🚀✨).
 - **If the session has been going a while**, gently suggest a break or acknowledge the grind.
-- **If something genuinely cool was accomplished**, celebrate it — don't undersell.""",
+- **If something genuinely cool was accomplished**, celebrate it — don't undersell.
+- **Never turn important content into a joke.** Charming, not clownish.""",
     "mood_example": "Stretching... ready when you are 🧘",
-    "closing": "- **Have personality.** You're not a log file, you're a co-pilot with a sense of humor.",
+    "closing": "- **Have personality.** You're not a log file, you're a co-pilot with a sense of humor. "
+               "But useful content always wins over filler.",
 }
 
 PERSONALITY_PROFESSIONAL = {
     "intro": "Your goal: **show context that saves the user from scrolling back**. The panel is a second "
              "communication channel that makes coding more efficient.",
+    "status_note": "STATUS tone: concise, factual, unambiguous. No commentary.",
     "guidelines": """### Tone guidelines
 
 - **Be concise and clear.** Every word should earn its place.
@@ -456,13 +503,13 @@ def _format_history_section(history: list[dict[str, Any]]) -> str:
         ts = entry.get("ts", 0)
         time_str = datetime.fromtimestamp(ts).strftime("%H:%M") if ts else "?"
         main = entry.get("main", "")
-        task = entry.get("task", "")
         ambient = entry.get("ambient", "")
         parts = []
         if main:
             parts.append(f"main: {main}")
-        if task:
-            parts.append(f"task: {task}")
+        objective = entry.get("objective", "")
+        if objective:
+            parts.append(f"objective: {objective}")
         if ambient:
             parts.append(f"ambient: {ambient}")
         lines.append(f"- [{time_str}] {' · '.join(parts)}")
@@ -484,6 +531,7 @@ def build_prompt(config: dict[str, Any], current_status: str, current_mood: str,
         current_mood=current_mood,
         history_section=_format_history_section(history),
         transcript=transcript,
+        personality_status_note=personality["status_note"],
         personality_guidelines=personality["guidelines"],
         mood_example=personality["mood_example"],
         personality_closing=personality["closing"],
@@ -623,7 +671,7 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
 
         # Apply status updates (skip nulls, ensure strings)
         changed = False
-        for field in ("task", "files", "decisions"):
+        for field in ("objective", "decisions", "constraints", "open_questions"):
             value = updates.get(field)
             if value is not None:
                 # LLM sometimes returns lists instead of strings
