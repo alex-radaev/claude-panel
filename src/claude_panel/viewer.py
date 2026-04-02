@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import webbrowser
 from typing import Any
 
 from rich.text import Text
@@ -504,6 +505,13 @@ class PanelViewer(App):
             await namespace["__script__"]()
         except Exception as e:
             canvas.write(Text(f"\n[Error] {type(e).__name__}: {e}", style="bold red"))
+
+    # ── Link handling ──
+
+    async def on_markdown_link_clicked(self, event: Markdown.LinkClicked) -> None:
+        """Open markdown links in the default browser."""
+        if event.href.startswith(("http://", "https://")):
+            webbrowser.open(event.href)
 
     # ── Screen navigation (keyboard + mouse) ──
 
