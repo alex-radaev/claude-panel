@@ -209,10 +209,10 @@ def _mood_code(unseen_prs: list[dict[str, Any]], context: str) -> str:
     """Generate mood display code that shows the new review alert."""
     lines_data = []
     for pr in unseen_prs[:5]:
-        title = pr.get("title", "Untitled")[:60]
-        repo = pr.get("repository", {}).get("nameWithOwner", "")
+        title = pr.get("title", "Untitled")[:50]
+        repo = pr.get("repository", {}).get("nameWithOwner", "").split("/")[-1]
         author = pr.get("author", {}).get("login", "?")
-        lines_data.append(f"{title} | {repo} | @{author}")
+        lines_data.append({"t": title, "r": repo, "a": author})
 
     lines_str = json.dumps(lines_data)
     context_str = json.dumps(context)
@@ -221,25 +221,24 @@ from rich.text import Text
 from rich.align import Align
 
 canvas.write(Text(""))
-canvas.write(Text(""))
 canvas.write(Align.center(Text("\U0001f4a1", style="bold")))
 canvas.write(Text(""))
-canvas.write(Align.center(Text("\u2501" * 40, style="dim")))
-canvas.write(Text(""))
 canvas.write(Align.center(Text({context_str}, style="bold bright_yellow")))
+canvas.write(Align.center(Text("\u2501" * 30, style="dim")))
 canvas.write(Text(""))
 
 prs = {lines_str}
 for pr in prs:
-    parts = pr.split(" | ")
-    title, repo, author = parts[0], parts[1], parts[2]
-    line = Text()
-    line.append("\U0001f4a1 ", style="bold")
-    line.append(title, style="bold white")
-    line.append(" \u2014 ", style="dim")
-    line.append(repo, style="cyan")
-    line.append(f" {{author}}", style="dim green")
-    canvas.write(Align.center(line))
+    line = Text("  ")
+    line.append("\U0001f4a1 ", style="bold yellow")
+    line.append(pr["t"], style="white")
+    canvas.write(line)
+    meta = Text("    ")
+    meta.append(pr["r"], style="cyan")
+    meta.append(" by ", style="dim")
+    meta.append(pr["a"], style="green")
+    canvas.write(meta)
+    canvas.write(Text(""))
 '''
 
 
