@@ -79,7 +79,11 @@ Then add to your MCP config (`~/.claude/settings.json` or `.mcp.json`).
 
 ## Usage
 
-The panel opens in an iTerm2 split pane. Ask Claude to open it, or:
+The panel **opens automatically** when you start a Claude Code session — an iTerm2 (macOS) or Windows Terminal (WSL) split pane launches with the viewer. No manual commands needed.
+
+To disable auto-open, set `"auto_open": false` in `~/.claude-panel/config.json`.
+
+You can also open it manually:
 
 ```bash
 # From Claude Code
@@ -135,6 +139,7 @@ panel(screensaver="tokyo-drift")   # change screensaver
 
 ```json
 {
+  "auto_open": true,
   "model": "claude-haiku-4-5-20251001",
   "favorite_screensaver": "tokyo-drift",
   "update_every_n": 1,
@@ -144,6 +149,7 @@ panel(screensaver="tokyo-drift")   # change screensaver
 
 | Option | Values | Description |
 |--------|--------|-------------|
+| `auto_open` | `true`, `false` | Automatically open the panel on session start (default: `true`) |
 | `model` | Any Claude model ID | Model for the status curator (default: Haiku) |
 | `favorite_screensaver` | Screensaver name | Default ambient screensaver |
 | `update_every_n` | Number | Update status every N responses (1 = every time) |
