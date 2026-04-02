@@ -115,7 +115,7 @@ def inject_review_notifications(state: dict[str, Any]) -> dict[str, Any]:
 
     existing = main.get("sections", [])
     filtered = [s for s in existing if s.get("id") != REVIEW_SECTION_ID]
-    main["sections"] = [section] + filtered
+    main["sections"] = filtered + [section]
     screens["main"] = main
     state["screens"] = screens
     return state

@@ -191,10 +191,10 @@ def update_main(state: dict[str, Any], sections: list[dict[str, str]]) -> dict[s
     if old_main.get("type") == "sections":
         pinned = [s for s in old_main.get("sections", []) if s.get("id") in PINNED_IDS]
 
-    # Build new sections: pinned first, then new content (excluding any dupes)
+    # Build new sections: new content first, then pinned at the bottom
     new_ids = {s.get("id") for s in sections}
     kept_pinned = [s for s in pinned if s.get("id") not in new_ids]
-    screens["main"] = {"type": "sections", "sections": kept_pinned + sections}
+    screens["main"] = {"type": "sections", "sections": sections + kept_pinned}
 
     if "main" not in order:
         order.append("main")
