@@ -147,64 +147,6 @@ def _write_notified(urls: set[str]) -> None:
     NOTIFIED_FILE.write_text(json.dumps(list(urls)))
 
 
-def inject_review_notifications(state: dict[str, Any]) -> dict[str, Any]:
-    """Inject review sections into STATUS and optionally flash MAIN mood."""
-    if not is_enabled():
-        return _strip_status(state)
-
-    review_state = read_review_state()
-    prs = review_state.get("prs", [])
-
-    if not prs:
-        return _strip_status(state)
-
-    screens = state.get("screens", {})
-
-    # STATUS: always show full review list (new + pending)
-    status_section = _build_status_section(prs)
-    if status_section:
-        status = screens.get("status", {})
-        if status.get("type") == "sections":
-            existing = [s for s in status.get("sections", []) if s.get("id") != STATUS_SECTION_ID]
-            status["sections"] = existing + [status_section]
-            screens["status"] = status
-
-    # MAIN: flash 💡 mood for genuinely unseen new reviews
-    new_prs, _ = _split_reviews(prs)
-    notified = _read_notified()
-    unseen = [pr for pr in new_prs if pr.get("url", "") not in notified]
-
-    if unseen:
-        # Build mood context from unseen PRs
-        if len(unseen) == 1:
-            pr = unseen[0]
-            repo = pr.get("repository", {}).get("nameWithOwner", "").split("/")[-1]
-            context = f"New review: {pr.get('title', '')} ({repo})"
-        else:
-            context = f"{len(unseen)} new reviews need your attention"
-
-        code = _mood_code(unseen, context)
-        screens["main"] = {
-            "type": "mood",
-            "emoji": "\U0001f4a1",
-            "context": context,
-            "code": code,
-        }
-
-        # Mark as notified
-        notified.update(pr.get("url", "") for pr in unseen)
-        _write_notified(notified)
-
-    # Clean up notified URLs for PRs that are no longer in the review list
-    current_urls = {pr.get("url", "") for pr in prs}
-    cleaned = notified & current_urls
-    if cleaned != notified:
-        _write_notified(cleaned)
-
-    state["screens"] = screens
-    return state
-
-
 def _mood_code(unseen_prs: list[dict[str, Any]], context: str) -> str:
     """Generate mood display code that shows the new review alert."""
     lines_data = []
@@ -242,16 +184,3 @@ for pr in prs:
 '''
 
 
-def _strip_status(state: dict[str, Any]) -> dict[str, Any]:
-    """Remove review section from STATUS."""
-    screens = state.get("screens", {})
-    status = screens.get("status", {})
-    if status.get("type") != "sections":
-        return state
-    existing = status.get("sections", [])
-    filtered = [s for s in existing if s.get("id") != STATUS_SECTION_ID]
-    if len(filtered) != len(existing):
-        status["sections"] = filtered
-        screens["status"] = status
-        state["screens"] = screens
-    return state
