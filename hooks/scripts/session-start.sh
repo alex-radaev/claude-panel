@@ -1,42 +1,28 @@
 #!/usr/bin/env bash
 # Session start hook: set up the 3-screen panel (main + status + ambient).
 # Session-aware: creates per-session state directory and cleans up stale sessions.
+# Auto-opens the panel viewer on session start (configurable via auto_open in config).
 
 SCREENSAVERS_DIR="$HOME/.claude-panel/screensavers"
-
-# Check if the panel viewer is running
-if ! pgrep -f "claude-panel" > /dev/null 2>&1; then
-    echo "CLAUDE-PANEL: Side panel is not running. Call panel_open() to launch it."
-else
-    echo "CLAUDE-PANEL: Side panel is running."
-fi
-
-# Read config for favorite screensaver
 CONFIG_FILE="$HOME/.claude-panel/config.json"
-FAVORITE="rain-city"
-if [ -f "$CONFIG_FILE" ]; then
-    CONFIGURED=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('favorite_screensaver',''))" 2>/dev/null)
-    [ -n "$CONFIGURED" ] && FAVORITE="$CONFIGURED"
-fi
 
-echo ""
-echo "Panel uses background agents for updates (zero conversation noise)."
-echo "Status screen auto-updates via Stop hook after each response."
-echo "Use panel(show=\"ambient\") for screensaver, panel(show=\"main\") to check context."
+# Read config
+FAVORITE="rain-city"
+AUTO_OPEN="true"
+if [ -f "$CONFIG_FILE" ]; then
+    FAVORITE_CFG=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('favorite_screensaver',''))" 2>/dev/null)
+    [ -n "$FAVORITE_CFG" ] && FAVORITE="$FAVORITE_CFG"
+    AUTO_OPEN_CFG=$(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(str(c.get('auto_open', True)).lower())" 2>/dev/null)
+    [ -n "$AUTO_OPEN_CFG" ] && AUTO_OPEN="$AUTO_OPEN_CFG"
+fi
 
 # Resolve session ID from parent Claude Code process
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-SESSION_ID=$(python3 -c "
-import json, os
-pid = os.getppid()
-sf = os.path.expanduser(f'~/.claude/sessions/{pid}.json')
-try:
-    data = json.loads(open(sf).read())
-    print(data.get('sessionId', ''))
-except Exception:
-    print('')
+SESSION_ID=$(uv run --directory "$PLUGIN_ROOT" python3 -c "
+from claude_panel.session import get_session_id
+print(get_session_id() or '')
 " 2>/dev/null)
 
 if [ -n "$SESSION_ID" ]; then
@@ -71,6 +57,63 @@ else
     # Fallback: reset global nudge counter
     echo "0" > "$HOME/.claude-panel/.nudge_state" 2>/dev/null
 fi
+
+# Check if a panel viewer is already running for THIS session
+VIEWER_RUNNING=false
+if [ -n "$SESSION_ID" ]; then
+    if pgrep -f "claude-panel --session $SESSION_ID" > /dev/null 2>&1; then
+        VIEWER_RUNNING=true
+    fi
+else
+    # No session ID — fall back to checking for any viewer
+    if pgrep -f "claude-panel --session" > /dev/null 2>&1; then
+        VIEWER_RUNNING=true
+    fi
+fi
+
+# Auto-open panel viewer if configured (default: true)
+if [ "$AUTO_OPEN" = "true" ] && [ "$VIEWER_RUNNING" = "false" ]; then
+    SESSION_FLAG=""
+    [ -n "$SESSION_ID" ] && SESSION_FLAG=" --session $SESSION_ID"
+
+    if [ "$(uname)" = "Darwin" ]; then
+        CMD="cd '$PLUGIN_ROOT' && uv run claude-panel$SESSION_FLAG"
+        osascript -e "
+tell application \"iTerm2\"
+    tell current session of current tab of current window
+        set newSession to (split vertically with default profile)
+        tell newSession
+            write text \"$CMD\"
+        end tell
+    end tell
+end tell
+" > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "CLAUDE-PANEL: Side panel opened automatically."
+        else
+            echo "CLAUDE-PANEL: Could not auto-open panel. Call panel_open() to launch it."
+        fi
+    elif [ -n "$WSL_DISTRO_NAME" ]; then
+        CMD="cd '$PLUGIN_ROOT' && uv run claude-panel$SESSION_FLAG"
+        wt.exe -w 0 sp -V --size 0.35 -- wsl.exe -d "$WSL_DISTRO_NAME" -- bash -lc "$CMD" > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "CLAUDE-PANEL: Side panel opened automatically."
+        else
+            echo "CLAUDE-PANEL: Could not auto-open panel. Call panel_open() to launch it."
+        fi
+    else
+        echo "CLAUDE-PANEL: Side panel is not running. Call panel_open() to launch it."
+    fi
+elif [ "$VIEWER_RUNNING" = "true" ]; then
+    echo "CLAUDE-PANEL: Side panel is running."
+else
+    echo "CLAUDE-PANEL: Auto-open disabled. Call panel_open() to launch it."
+fi
+
+echo ""
+echo "Panel uses background agents for updates (zero conversation noise)."
+echo "Status screen auto-updates via Stop hook after each response."
+echo "Use panel(show=\"ambient\") for screensaver, panel(show=\"main\") to check context."
 
 # Clean up stale sessions (from previous Claude Code runs that have exited)
 uv run --directory "$PLUGIN_ROOT" python3 -c "
