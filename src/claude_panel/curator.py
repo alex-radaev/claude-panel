@@ -175,11 +175,27 @@ def ensure_ambient(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def update_main(state: dict[str, Any], sections: list[dict[str, str]]) -> dict[str, Any]:
-    """Replace main screen content and show it."""
+    """Replace main screen content and show it.
+
+    Preserves pinned sections (e.g. review-notifications) that exist
+    in the current main screen by re-prepending them.
+    """
+    PINNED_IDS = {"review-notifications"}
     state = ensure_multi(state)
     screens = state.get("screens", {})
     order = list(state.get("screen_order", []))
-    screens["main"] = {"type": "sections", "sections": sections}
+
+    # Preserve pinned sections from existing main screen
+    old_main = screens.get("main", {})
+    pinned = []
+    if old_main.get("type") == "sections":
+        pinned = [s for s in old_main.get("sections", []) if s.get("id") in PINNED_IDS]
+
+    # Build new sections: pinned first, then new content (excluding any dupes)
+    new_ids = {s.get("id") for s in sections}
+    kept_pinned = [s for s in pinned if s.get("id") not in new_ids]
+    screens["main"] = {"type": "sections", "sections": kept_pinned + sections}
+
     if "main" not in order:
         order.append("main")
     state["screens"] = screens
@@ -426,6 +442,7 @@ Rules:
 - Use markdown: **bold**, `code`, ```code blocks```, bullet lists, checkboxes `- [x]`.
 - Section IDs: lowercase, hyphens only.
 - Rich sections: 1-3 sections max. Don't overload.
+- **Never** create a section with id "review-notifications" — that section is managed automatically by the review notification system. It will be preserved across your updates.
 {personality_closing}
 """
 

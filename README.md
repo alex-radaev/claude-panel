@@ -133,6 +133,17 @@ panel(screensaver="tokyo-drift")   # change screensaver
 
 **Session isolation:** Each Claude Code session gets its own state. Run multiple sessions — they don't interfere. The viewer tracks whichever session is active.
 
+## Review Notifications
+
+The panel can show GitHub PRs waiting for your review directly on the main screen. A shared background poller checks `gh search prs --review-requested=@me` every 2 minutes and surfaces results as a clickable list with links that open in your browser.
+
+- **Auto-appears** when you have pending reviews
+- **Auto-dismisses** when you approve, comment, or request changes
+- **One poller** shared across all concurrent sessions (no duplicate API calls)
+- **Clickable links** — click a PR title to open it in the browser
+- Filter by GitHub org via `review_notifications.org` in config
+- Disable entirely with `"review_notifications": false`
+
 ## Configuration
 
 `~/.claude-panel/config.json`:
@@ -143,7 +154,12 @@ panel(screensaver="tokyo-drift")   # change screensaver
   "model": "claude-haiku-4-5-20251001",
   "favorite_screensaver": "tokyo-drift",
   "update_every_n": 1,
-  "curator_personality": "playful"
+  "curator_personality": "playful",
+  "review_notifications": {
+    "enabled": true,
+    "poll_interval_seconds": 120,
+    "org": "my-org"
+  }
 }
 ```
 
@@ -154,6 +170,10 @@ panel(screensaver="tokyo-drift")   # change screensaver
 | `favorite_screensaver` | Screensaver name | Default ambient screensaver |
 | `update_every_n` | Number | Update status every N responses (1 = every time) |
 | `curator_personality` | `"playful"`, `"professional"` | Curator tone — playful adds humor and emoji combos, professional is concise and factual |
+| `review_notifications` | Object or `false` | GitHub review request notifications (default: enabled) |
+| `review_notifications.enabled` | `true`, `false` | Toggle review notifications on/off |
+| `review_notifications.poll_interval_seconds` | Number | How often to check GitHub for new reviews (default: `120`) |
+| `review_notifications.org` | GitHub org name | Only show reviews from this org (omit for all orgs) |
 
 ## Contributing
 

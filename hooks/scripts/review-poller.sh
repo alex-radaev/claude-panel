@@ -16,15 +16,16 @@ mkdir -p "$REVIEWS_DIR"
 # Write our PID for lifecycle management
 echo $$ > "$PID_FILE"
 
-# Read poll interval from config (default: 120s)
-POLL_INTERVAL=$(python3 -c "
+# Read config (poll interval + org filter)
+read -r POLL_INTERVAL GH_ORG <<< $(python3 -c "
 import json, os
 try:
     c = json.load(open(os.path.expanduser('$CONFIG_FILE')))
     rn = c.get('review_notifications', {})
-    print(rn.get('poll_interval_seconds', 120) if isinstance(rn, dict) else 120)
+    if not isinstance(rn, dict): rn = {}
+    print(rn.get('poll_interval_seconds', 120), rn.get('org', ''))
 except Exception:
-    print(120)
+    print(120, '')
 " 2>/dev/null)
 
 # Clean exit: remove PID file
@@ -38,8 +39,9 @@ while true; do
     fi
 
     # Poll GitHub for review requests (pipe to python to avoid shell quoting issues)
-    gh search prs --review-requested=@me --state=open \
-        --json url,title,author,createdAt,repository --limit 20 2>/dev/null | \
+    GH_CMD=(gh search prs --review-requested=@me --state=open --json url,title,author,createdAt,repository --limit 20)
+    [ -n "$GH_ORG" ] && GH_CMD+=(--owner "$GH_ORG")
+    "${GH_CMD[@]}" 2>/dev/null | \
     python3 -c "
 import json, sys, time, tempfile, os
 reviews_dir = os.path.expanduser('$REVIEWS_DIR')
