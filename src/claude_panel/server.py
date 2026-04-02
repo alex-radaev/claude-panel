@@ -143,13 +143,14 @@ to avoid repeating what the curator already wrote.
 - `panel(screensaver="rain-city")` — change screensaver
 - `panel_read()` — see current panel content
 
-## Curator personality
+## Configuration
 
-The status curator's personality is configurable via `~/.claude-panel/config.json`:
+Settings live in `~/.claude-panel/config.json`:
+- `"auto_open": true` — automatically open the panel on session start (default: true)
 - `"curator_personality": "playful"` — witty, emoji combos, humor (default)
 - `"curator_personality": "professional"` — concise, actionable, no jokes
 
-If the user asks to change the curator personality, update the config file.
+If the user asks to change any setting, update the config file.
 """,
 )
 
