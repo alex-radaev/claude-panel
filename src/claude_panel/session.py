@@ -147,9 +147,11 @@ def cleanup_stale_sessions() -> list[str]:
             except (json.JSONDecodeError, OSError):
                 continue
 
-    for session_id in list_sessions():
-        if session_id not in active_ids:
-            sdir = session_state_dir(session_id)
-            shutil.rmtree(sdir, ignore_errors=True)
-            removed.append(session_id)
+    # Clean all session dirs (including empty ones from short-lived sessions)
+    from claude_panel.constants import SESSIONS_DIR
+    if SESSIONS_DIR.exists():
+        for sdir in SESSIONS_DIR.iterdir():
+            if sdir.is_dir() and sdir.name not in active_ids:
+                shutil.rmtree(sdir, ignore_errors=True)
+                removed.append(sdir.name)
     return removed
