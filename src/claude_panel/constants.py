@@ -12,6 +12,9 @@ CURATOR_LOG = PANEL_DIR / "curator.log"
 POLL_INTERVAL = 0.3  # seconds
 EMOJI_DIR = PANEL_DIR / "emoji"
 DEFAULT_SCREENSAVER = "rain-city"
+REVIEWS_DIR = PANEL_DIR / "reviews"
+REVIEW_STATE_FILE = REVIEWS_DIR / "state.json"
+REVIEW_POLLER_PID = REVIEWS_DIR / "poller.pid"
 
 
 def resolve_screensaver(name: str) -> Path | None:

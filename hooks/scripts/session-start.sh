@@ -12,11 +12,19 @@ INPUT=$(cat)
 # Read config
 FAVORITE="rain-city"
 AUTO_OPEN="true"
+REVIEW_ENABLED="true"
 if [ -f "$CONFIG_FILE" ]; then
     FAVORITE_CFG=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('favorite_screensaver',''))" 2>/dev/null)
     [ -n "$FAVORITE_CFG" ] && FAVORITE="$FAVORITE_CFG"
     AUTO_OPEN_CFG=$(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(str(c.get('auto_open', True)).lower())" 2>/dev/null)
     [ -n "$AUTO_OPEN_CFG" ] && AUTO_OPEN="$AUTO_OPEN_CFG"
+    REVIEW_ENABLED_CFG=$(python3 -c "
+import json
+c = json.load(open('$CONFIG_FILE'))
+rn = c.get('review_notifications', {})
+print(str(rn.get('enabled', True) if isinstance(rn, dict) else rn).lower())
+" 2>/dev/null)
+    [ -n "$REVIEW_ENABLED_CFG" ] && REVIEW_ENABLED="$REVIEW_ENABLED_CFG"
 fi
 
 # Resolve session ID from hook input (transcript_path), fallback to process tree
@@ -140,3 +148,18 @@ uv run --directory "$PLUGIN_ROOT" python3 -c "
 from claude_panel.session import cleanup_stale_sessions
 removed = cleanup_stale_sessions()
 " 2>/dev/null
+
+# Start review notification poller if enabled and not already running
+if [ "$REVIEW_ENABLED" = "true" ]; then
+    POLLER_PID_FILE="$HOME/.claude-panel/reviews/poller.pid"
+    POLLER_RUNNING=false
+    if [ -f "$POLLER_PID_FILE" ]; then
+        POLLER_PID=$(cat "$POLLER_PID_FILE" 2>/dev/null)
+        if [ -n "$POLLER_PID" ] && kill -0 "$POLLER_PID" 2>/dev/null; then
+            POLLER_RUNNING=true
+        fi
+    fi
+    if [ "$POLLER_RUNNING" = "false" ]; then
+        nohup bash "$SCRIPT_DIR/review-poller.sh" > /dev/null 2>&1 &
+    fi
+fi
