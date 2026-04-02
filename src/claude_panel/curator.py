@@ -703,13 +703,11 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
             state["screens"] = screens
 
         # Check for unseen review notifications (mood flash on MAIN)
-        from claude_panel.reviews import _split_reviews, _read_notified, _write_notified, _mood_code, REVIEWS_DIR
+        from claude_panel.reviews import find_unseen_reviews, _mood_code
         review_mood_applied = False
         if reviews_enabled():
             review_prs = read_review_state().get("prs", [])
-            new_prs, _ = _split_reviews(review_prs)
-            notified = _read_notified()
-            unseen = [pr for pr in new_prs if pr.get("url", "") not in notified]
+            unseen = find_unseen_reviews(review_prs)
             if unseen:
                 if len(unseen) == 1:
                     pr = unseen[0]
@@ -723,11 +721,6 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
                 sc["main"] = {"type": "mood", "emoji": "\U0001f4a1", "context": context, "code": code}
                 state["screens"] = sc
                 state["active"] = "main"
-                notified.update(pr.get("url", "") for pr in unseen)
-                _write_notified(notified)
-                # Clean up notified for PRs no longer in list
-                current_urls = {pr.get("url", "") for pr in review_prs}
-                _write_notified(notified & current_urls)
                 changed = True
                 review_mood_applied = True
                 logger.info(f"Review mood flash: {len(unseen)} unseen")
