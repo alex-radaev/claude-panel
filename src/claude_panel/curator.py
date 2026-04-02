@@ -715,8 +715,8 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
 
         if main_mode == "sections":
             main_sections = updates.get("main_sections", [])
-            # Strip pinned section IDs — those are managed externally
-            main_sections = [s for s in main_sections if s.get("id") not in {"review-notifications"}]
+            # Strip any review-related sections — managed externally by review poller
+            main_sections = [s for s in main_sections if "review" not in s.get("id", "").lower()]
             if main_sections:
                 # Inject emoji into first section title if provided
                 if emoji and main_sections[0].get("title"):
