@@ -175,26 +175,11 @@ def ensure_ambient(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def update_main(state: dict[str, Any], sections: list[dict[str, str]]) -> dict[str, Any]:
-    """Replace main screen content and show it.
-
-    Preserves pinned sections (e.g. review-notifications) that exist
-    in the current main screen by re-prepending them.
-    """
-    PINNED_IDS = {"review-notifications"}
+    """Replace main screen content and show it."""
     state = ensure_multi(state)
     screens = state.get("screens", {})
     order = list(state.get("screen_order", []))
-
-    # Preserve pinned sections from existing main screen
-    old_main = screens.get("main", {})
-    pinned = []
-    if old_main.get("type") == "sections":
-        pinned = [s for s in old_main.get("sections", []) if s.get("id") in PINNED_IDS]
-
-    # Build new sections: new content first, then pinned at the bottom
-    new_ids = {s.get("id") for s in sections}
-    kept_pinned = [s for s in pinned if s.get("id") not in new_ids]
-    screens["main"] = {"type": "sections", "sections": sections + kept_pinned}
+    screens["main"] = {"type": "sections", "sections": sections}
 
     if "main" not in order:
         order.append("main")
