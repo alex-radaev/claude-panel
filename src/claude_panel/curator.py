@@ -442,7 +442,7 @@ Rules:
 - Use markdown: **bold**, `code`, ```code blocks```, bullet lists, checkboxes `- [x]`.
 - Section IDs: lowercase, hyphens only.
 - Rich sections: 1-3 sections max. Don't overload.
-- **Never** create a section with id "review-notifications" — that section is managed automatically by the review notification system. It will be preserved across your updates.
+- **Never** include a section with id "review-notifications" in your output. Do not create, rewrite, or summarize it. That section is injected automatically by the review notification system and is completely off-limits to you.
 {personality_closing}
 """
 
@@ -715,6 +715,8 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
 
         if main_mode == "sections":
             main_sections = updates.get("main_sections", [])
+            # Strip pinned section IDs — those are managed externally
+            main_sections = [s for s in main_sections if s.get("id") not in {"review-notifications"}]
             if main_sections:
                 # Inject emoji into first section title if provided
                 if emoji and main_sections[0].get("title"):
