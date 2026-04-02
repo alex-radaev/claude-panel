@@ -183,11 +183,12 @@ def inject_review_notifications(state: dict[str, Any]) -> dict[str, Any]:
         else:
             context = f"{len(unseen)} new reviews need your attention"
 
+        code = _mood_code(unseen, context)
         screens["main"] = {
             "type": "mood",
             "emoji": "\U0001f4a1",
             "context": context,
-            "code": _mood_code(unseen),
+            "code": code,
         }
 
         # Mark as notified
@@ -204,7 +205,7 @@ def inject_review_notifications(state: dict[str, Any]) -> dict[str, Any]:
     return state
 
 
-def _mood_code(unseen_prs: list[dict[str, Any]]) -> str:
+def _mood_code(unseen_prs: list[dict[str, Any]], context: str) -> str:
     """Generate mood display code that shows the new review alert."""
     lines_data = []
     for pr in unseen_prs[:5]:
@@ -214,6 +215,7 @@ def _mood_code(unseen_prs: list[dict[str, Any]]) -> str:
         lines_data.append(f"{title} | {repo} | @{author}")
 
     lines_str = json.dumps(lines_data)
+    context_str = json.dumps(context)
     return f'''
 from rich.text import Text
 from rich.align import Align
@@ -224,7 +226,7 @@ canvas.write(Align.center(Text("\U0001f4a1", style="bold")))
 canvas.write(Text(""))
 canvas.write(Align.center(Text("\u2501" * 40, style="dim")))
 canvas.write(Text(""))
-canvas.write(Align.center(Text(CONTEXT, style="bold bright_yellow")))
+canvas.write(Align.center(Text({context_str}, style="bold bright_yellow")))
 canvas.write(Text(""))
 
 prs = {lines_str}
@@ -234,7 +236,7 @@ for pr in prs:
     line = Text()
     line.append("\U0001f4a1 ", style="bold")
     line.append(title, style="bold white")
-    line.append(f" \u2014 ", style="dim")
+    line.append(" \u2014 ", style="dim")
     line.append(repo, style="cyan")
     line.append(f" {{author}}", style="dim green")
     canvas.write(Align.center(line))
