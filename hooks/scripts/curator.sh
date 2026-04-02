@@ -54,19 +54,3 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Always use uv run to pick up latest source code
 echo "$INPUT" | uv run --directory "$PLUGIN_ROOT" python -m claude_panel.curator \
     >> "$HOME/.claude-panel/curator.log" 2>&1
-
-# ── Inject review notifications into MAIN screen ──
-if [ -n "$SESSION_ID" ]; then
-    uv run --directory "$PLUGIN_ROOT" python3 -c "
-from claude_panel.reviews import inject_review_notifications
-from claude_panel.curator import read_state, write_state
-import time
-sid = '$SESSION_ID'
-state = read_state(sid)
-if state:
-    updated = inject_review_notifications(state)
-    if updated is not state:
-        updated['ts'] = time.time()
-    write_state(updated, sid)
-" >> "$HOME/.claude-panel/curator.log" 2>&1
-fi

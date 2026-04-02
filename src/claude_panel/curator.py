@@ -175,26 +175,11 @@ def ensure_ambient(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def update_main(state: dict[str, Any], sections: list[dict[str, str]]) -> dict[str, Any]:
-    """Replace main screen content and show it.
-
-    Preserves pinned sections (e.g. review-notifications) that exist
-    in the current main screen by re-prepending them.
-    """
-    PINNED_IDS = {"review-notifications"}
+    """Replace main screen content and show it."""
     state = ensure_multi(state)
     screens = state.get("screens", {})
     order = list(state.get("screen_order", []))
-
-    # Preserve pinned sections from existing main screen
-    old_main = screens.get("main", {})
-    pinned = []
-    if old_main.get("type") == "sections":
-        pinned = [s for s in old_main.get("sections", []) if s.get("id") in PINNED_IDS]
-
-    # Build new sections: pinned first, then new content (excluding any dupes)
-    new_ids = {s.get("id") for s in sections}
-    kept_pinned = [s for s in pinned if s.get("id") not in new_ids]
-    screens["main"] = {"type": "sections", "sections": kept_pinned + sections}
+    screens["main"] = {"type": "sections", "sections": sections}
 
     if "main" not in order:
         order.append("main")
@@ -442,7 +427,7 @@ Rules:
 - Use markdown: **bold**, `code`, ```code blocks```, bullet lists, checkboxes `- [x]`.
 - Section IDs: lowercase, hyphens only.
 - Rich sections: 1-3 sections max. Don't overload.
-- **Never** create a section with id "review-notifications" — that section is managed automatically by the review notification system. It will be preserved across your updates.
+- **Never** include a section with id "review-notifications" in your output. Do not create, rewrite, or summarize it. That section is injected automatically by the review notification system and is completely off-limits to you.
 {personality_closing}
 """
 
@@ -698,36 +683,77 @@ async def run_status_curator(hook_input: dict[str, Any]) -> None:
                 state = update_status_section(state, field, str(value))
                 changed = True
 
-        # Drop stale sections and enforce canonical order
+        # Inject review notifications into status (deterministic, not LLM)
+        from claude_panel.reviews import is_enabled as reviews_enabled, read_review_state, _build_status_section
+        review_section = None
+        if reviews_enabled():
+            review_state = read_review_state()
+            review_section = _build_status_section(review_state.get("prs", []))
+
+        # Drop stale sections and enforce canonical order + reviews
         screens = state.get("screens", {})
         status_screen = screens.get("status", {})
         if status_screen.get("type") == "sections":
             by_id = {s.get("id"): s for s in status_screen.get("sections", [])}
-            status_screen["sections"] = [
-                by_id[sid] for sid in CANONICAL_STATUS if sid in by_id
-            ]
+            ordered = [by_id[sid] for sid in CANONICAL_STATUS if sid in by_id]
+            if review_section:
+                ordered.append(review_section)
+            status_screen["sections"] = ordered
             screens["status"] = status_screen
             state["screens"] = screens
 
-        # Apply main screen update — curator decides mood vs rich content
-        main_mode = updates.get("main_mode", "mood")
-        emoji = updates.get("emoji", "")
+        # Check for unseen review notifications (mood flash on MAIN)
+        from claude_panel.reviews import _split_reviews, _read_notified, _write_notified, _mood_code, REVIEWS_DIR
+        review_mood_applied = False
+        if reviews_enabled():
+            review_prs = read_review_state().get("prs", [])
+            new_prs, _ = _split_reviews(review_prs)
+            notified = _read_notified()
+            unseen = [pr for pr in new_prs if pr.get("url", "") not in notified]
+            if unseen:
+                if len(unseen) == 1:
+                    pr = unseen[0]
+                    repo = pr.get("repository", {}).get("nameWithOwner", "").split("/")[-1]
+                    context = f"New review: {pr.get('title', '')} ({repo})"
+                else:
+                    context = f"{len(unseen)} new reviews need your attention"
+                code = _mood_code(unseen, context)
+                state = ensure_multi(state)
+                sc = state.get("screens", {})
+                sc["main"] = {"type": "mood", "emoji": "\U0001f4a1", "context": context, "code": code}
+                state["screens"] = sc
+                state["active"] = "main"
+                notified.update(pr.get("url", "") for pr in unseen)
+                _write_notified(notified)
+                # Clean up notified for PRs no longer in list
+                current_urls = {pr.get("url", "") for pr in review_prs}
+                _write_notified(notified & current_urls)
+                changed = True
+                review_mood_applied = True
+                logger.info(f"Review mood flash: {len(unseen)} unseen")
 
-        if main_mode == "sections":
-            main_sections = updates.get("main_sections", [])
-            if main_sections:
-                # Inject emoji into first section title if provided
-                if emoji and main_sections[0].get("title"):
-                    main_sections[0]["title"] = f"{emoji} {main_sections[0]['title']}"
-                state = update_main(state, main_sections)
-                changed = True
-                logger.info(f"Main: {emoji} rich content ({len(main_sections)} sections)")
-        else:
-            context = updates.get("context", "")
-            if emoji and context:
-                state = update_mood(state, emoji, context)
-                changed = True
-                logger.info(f"Mood: {emoji} {context}")
+        # Apply main screen update — curator decides mood vs rich content
+        if not review_mood_applied:
+            main_mode = updates.get("main_mode", "mood")
+            emoji = updates.get("emoji", "")
+
+            if main_mode == "sections":
+                main_sections = updates.get("main_sections", [])
+                # Strip any review-related sections — curator shouldn't write these
+                main_sections = [s for s in main_sections if "review" not in s.get("id", "").lower()]
+                if main_sections:
+                    # Inject emoji into first section title if provided
+                    if emoji and main_sections[0].get("title"):
+                        main_sections[0]["title"] = f"{emoji} {main_sections[0]['title']}"
+                    state = update_main(state, main_sections)
+                    changed = True
+                    logger.info(f"Main: {emoji} rich content ({len(main_sections)} sections)")
+            else:
+                context = updates.get("context", "")
+                if emoji and context:
+                    state = update_mood(state, emoji, context)
+                    changed = True
+                    logger.info(f"Mood: {emoji} {context}")
 
         if changed:
             write_state(state, session_id)
