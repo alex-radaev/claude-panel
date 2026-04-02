@@ -6,6 +6,9 @@
 SCREENSAVERS_DIR="$HOME/.claude-panel/screensavers"
 CONFIG_FILE="$HOME/.claude-panel/config.json"
 
+# Read hook input (JSON via stdin — contains transcript_path with session ID)
+INPUT=$(cat)
+
 # Read config
 FAVORITE="rain-city"
 AUTO_OPEN="true"
@@ -16,14 +19,31 @@ if [ -f "$CONFIG_FILE" ]; then
     [ -n "$AUTO_OPEN_CFG" ] && AUTO_OPEN="$AUTO_OPEN_CFG"
 fi
 
-# Resolve session ID from parent Claude Code process
+# Resolve session ID from hook input (transcript_path), fallback to process tree
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-SESSION_ID=$(uv run --directory "$PLUGIN_ROOT" python3 -c "
+SESSION_ID=$(python3 -c "
+import json, os
+try:
+    data = json.loads('''$INPUT''') if '''$INPUT'''.strip() else {}
+    tp = data.get('transcript_path', '')
+    stem = os.path.splitext(os.path.basename(tp))[0] if tp else ''
+    if len(stem) >= 32:
+        print(stem)
+    else:
+        print('')
+except Exception:
+    print('')
+" 2>/dev/null)
+
+# Fallback: walk process tree
+if [ -z "$SESSION_ID" ]; then
+    SESSION_ID=$(uv run --directory "$PLUGIN_ROOT" python3 -c "
 from claude_panel.session import get_session_id
 print(get_session_id() or '')
 " 2>/dev/null)
+fi
 
 if [ -n "$SESSION_ID" ]; then
     # Create per-session state directory
