@@ -59,6 +59,22 @@ print(get_session_id() or '')
 " 2>/dev/null)
 fi
 
+# Detect spawned agent: walk process tree to find parent Claude Code session.
+# Interactive sessions write ~/.claude/sessions/{pid}.json, but spawned agents don't.
+# So get_session_id() walks past the agent PID and finds the PARENT's session instead.
+# If that differs from our hook input session_id, we're a spawned agent — skip panel.
+# NOTE: relies on Claude Code not writing session files for agents. If that changes,
+# this detection will need updating.
+PARENT_SESSION_ID=$(uv run --directory "$PLUGIN_ROOT" python3 -c "
+from claude_panel.session import get_session_id
+print(get_session_id() or '')
+" 2>/dev/null)
+
+if [ -n "$PARENT_SESSION_ID" ] && [ -n "$SESSION_ID" ] && [ "$PARENT_SESSION_ID" != "$SESSION_ID" ]; then
+    echo "CLAUDE-PANEL: Skipping panel for spawned agent (parent session: $PARENT_SESSION_ID)."
+    exit 0
+fi
+
 if [ -n "$SESSION_ID" ]; then
     # Create per-session state directory
     mkdir -p "$HOME/.claude-panel/sessions/$SESSION_ID"
