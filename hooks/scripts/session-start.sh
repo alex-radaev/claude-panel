@@ -6,6 +6,12 @@
 SCREENSAVERS_DIR="$HOME/.claude-panel/screensavers"
 CONFIG_FILE="$HOME/.claude-panel/config.json"
 
+# Skip panel setup for agent team members (they don't need their own panel)
+if [ -n "$CLAUDE_CODE_TEAM_NAME" ]; then
+    echo "CLAUDE-PANEL: Skipping panel for team member ($CLAUDE_CODE_TEAM_NAME)."
+    exit 0
+fi
+
 # Read hook input (JSON via stdin — contains transcript_path with session ID)
 INPUT=$(cat)
 
