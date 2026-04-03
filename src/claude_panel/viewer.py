@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 import webbrowser
 from pathlib import Path
@@ -200,19 +201,21 @@ class PanelViewer(App):
             self.set_interval(2.0, self._check_session_alive)
 
     async def _check_session_alive(self) -> None:
-        """Exit when the pinned Claude session is no longer active."""
+        """Exit when the pinned Claude session's process is no longer running."""
         sessions_dir = Path.home() / ".claude" / "sessions"
         if not sessions_dir.exists():
             return
-        # Check if any session file still references our pinned session ID
+        # Find the PID file for our session and check if the process is alive
         for sf in sessions_dir.glob("*.json"):
             try:
                 data = json.loads(sf.read_text())
                 if data.get("sessionId") == _pinned_session_id:
-                    return  # session still active
-            except (json.JSONDecodeError, OSError):
+                    pid = int(sf.stem)
+                    os.kill(pid, 0)  # doesn't kill — just checks existence
+                    return  # process still running
+            except (json.JSONDecodeError, OSError, ValueError):
                 continue
-        # Session is gone — exit
+        # Session file gone or process exited — exit
         self.exit()
 
     def _resolve_state_file(self) -> Any:
