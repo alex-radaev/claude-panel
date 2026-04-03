@@ -19,7 +19,7 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widgets import Footer, Header, Markdown, RichLog, Static
 
-from claude_panel.constants import CONTENT_DIR, POLL_INTERVAL, STATE_FILE
+from claude_panel.constants import CONTENT_DIR, POLL_INTERVAL, STATE_FILE, list_screensavers, resolve_screensaver
 from claude_panel.session import get_active_session, session_state_file
 
 # Set by --session CLI arg; when set, viewer ignores the global active_session pointer
@@ -165,6 +165,8 @@ class PanelViewer(App):
         ("c", "clear", "Clear"),
         ("left", "prev_screen", "Prev"),
         ("right", "next_screen", "Next"),
+        ("up", "prev_screensaver", "Prev Screensaver"),
+        ("down", "next_screensaver", "Next Screensaver"),
     ]
 
     SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -379,6 +381,11 @@ class PanelViewer(App):
         canvas.styles.height = "1fr"
         await container.mount(canvas)
 
+        hint = Static(Text.from_markup("[dim]\u2191 \u2193 cycle screensavers[/]"))
+        hint.styles.text_align = "center"
+        hint.styles.margin = (0, 0)
+        await container.mount(hint)
+
         self.run_worker(self._execute_screensaver_loop(canvas, code), exclusive=True)
 
     async def _show_waiting(self) -> None:
@@ -551,6 +558,53 @@ class PanelViewer(App):
         await asyncio.sleep(0.05)
         self._stop_screensaver = False
         await self._render_active_screen()
+
+    def _cycle_screensaver(self, direction: int) -> None:
+        """Switch the ambient screen to the next/prev screensaver."""
+        if self.current_mode != "multi":
+            return
+        screen_data = self._screens.get(self._active_screen)
+        if not screen_data or screen_data.get("type") != "screensaver":
+            return
+        available = list_screensavers()
+        if len(available) <= 1:
+            return
+        current = screen_data.get("name", "")
+        try:
+            idx = available.index(current)
+        except ValueError:
+            idx = 0
+        idx = (idx + direction) % len(available)
+        new_name = available[idx]
+        path = resolve_screensaver(new_name)
+        if not path:
+            return
+        # Update state file so the poll loop picks it up
+        state_file = self._resolve_state_file()
+        try:
+            raw = state_file.read_text()
+            state = json.loads(raw)
+            state["screens"][self._active_screen] = {
+                "type": "screensaver",
+                "name": new_name,
+                "code": path.read_text(),
+            }
+            state["ts"] = time.time()
+            import tempfile, os
+            fd, tmp = tempfile.mkstemp(dir=str(state_file.parent), suffix=".tmp")
+            with open(fd, "w") as f:
+                json.dump(state, f)
+            os.rename(tmp, str(state_file))
+        except (json.JSONDecodeError, OSError, KeyError):
+            pass
+
+    async def action_prev_screensaver(self) -> None:
+        """Switch to previous screensaver."""
+        self._cycle_screensaver(-1)
+
+    async def action_next_screensaver(self) -> None:
+        """Switch to next screensaver."""
+        self._cycle_screensaver(1)
 
     async def action_clear(self) -> None:
         """Clear the panel (active session or global)."""
