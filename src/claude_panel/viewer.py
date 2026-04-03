@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 import webbrowser
 from typing import Any
@@ -20,7 +21,7 @@ from textual.reactive import reactive
 from textual.widgets import Footer, Header, Markdown, RichLog, Static
 
 from claude_panel.constants import CONTENT_DIR, POLL_INTERVAL, STATE_FILE
-from claude_panel.session import get_active_session, session_state_file
+from claude_panel.session import CLAUDE_SESSIONS_DIR, get_active_session, session_state_file
 
 # Set by --session CLI arg; when set, viewer ignores the global active_session pointer
 _pinned_session_id: str | None = None
@@ -193,8 +194,31 @@ class PanelViewer(App):
         yield Static("Watching for updates...", id="status-bar")
 
     def on_mount(self) -> None:
+        self._session_miss_count = 0
         self.set_interval(POLL_INTERVAL, self._poll_state)
         self.set_interval(0.1, self._animate_spinner)
+        if _pinned_session_id:
+            self.set_interval(2.0, self._check_session_alive)
+
+    async def _check_session_alive(self) -> None:
+        """Exit when the pinned Claude session's process is no longer running."""
+        if not CLAUDE_SESSIONS_DIR.exists():
+            return
+        # Find the PID file for our session and check if the process is alive
+        for sf in CLAUDE_SESSIONS_DIR.glob("*.json"):
+            try:
+                data = json.loads(sf.read_text())
+                if data.get("sessionId") == _pinned_session_id:
+                    pid = int(data["pid"])
+                    os.kill(pid, 0)  # doesn't kill — just checks existence
+                    self._session_miss_count = 0
+                    return  # process still running
+            except (json.JSONDecodeError, OSError, ValueError, KeyError):
+                continue
+        # Session file gone or process exited — require consecutive failures before exit
+        self._session_miss_count += 1
+        if self._session_miss_count >= 3:
+            self.exit()
 
     def _resolve_state_file(self) -> Any:
         """Determine which state file to poll.
