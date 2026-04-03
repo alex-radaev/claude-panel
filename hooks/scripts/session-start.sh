@@ -105,7 +105,7 @@ if [ "$AUTO_OPEN" = "true" ] && [ "$VIEWER_RUNNING" = "false" ]; then
     [ -n "$SESSION_ID" ] && SESSION_FLAG=" --session $SESSION_ID"
 
     if [ "$(uname)" = "Darwin" ]; then
-        CMD="cd '$PLUGIN_ROOT' && uv run claude-panel$SESSION_FLAG"
+        CMD="cd '$PLUGIN_ROOT' && uv run claude-panel$SESSION_FLAG; exit"
         osascript -e "
 tell application \"iTerm2\"
     tell current session of current tab of current window
@@ -122,7 +122,7 @@ end tell
             echo "CLAUDE-PANEL: Could not auto-open panel. Call panel_open() to launch it."
         fi
     elif [ -n "$WSL_DISTRO_NAME" ]; then
-        CMD="cd '$PLUGIN_ROOT' && uv run claude-panel$SESSION_FLAG"
+        CMD="cd '$PLUGIN_ROOT' && uv run claude-panel$SESSION_FLAG; exit"
         wt.exe -w 0 sp -V --size 0.35 -- wsl.exe -d "$WSL_DISTRO_NAME" -- bash -lc "$CMD" > /dev/null 2>&1
         if [ $? -eq 0 ]; then
             echo "CLAUDE-PANEL: Side panel opened automatically."

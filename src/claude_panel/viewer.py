@@ -6,6 +6,7 @@ import asyncio
 import json
 import time
 import webbrowser
+from pathlib import Path
 from typing import Any
 
 from rich.text import Text
@@ -195,6 +196,24 @@ class PanelViewer(App):
     def on_mount(self) -> None:
         self.set_interval(POLL_INTERVAL, self._poll_state)
         self.set_interval(0.1, self._animate_spinner)
+        if _pinned_session_id:
+            self.set_interval(2.0, self._check_session_alive)
+
+    async def _check_session_alive(self) -> None:
+        """Exit when the pinned Claude session is no longer active."""
+        sessions_dir = Path.home() / ".claude" / "sessions"
+        if not sessions_dir.exists():
+            return
+        # Check if any session file still references our pinned session ID
+        for sf in sessions_dir.glob("*.json"):
+            try:
+                data = json.loads(sf.read_text())
+                if data.get("sessionId") == _pinned_session_id:
+                    return  # session still active
+            except (json.JSONDecodeError, OSError):
+                continue
+        # Session is gone — exit
+        self.exit()
 
     def _resolve_state_file(self) -> Any:
         """Determine which state file to poll.

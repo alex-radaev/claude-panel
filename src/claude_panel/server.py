@@ -650,9 +650,9 @@ def _open_macos(project_dir: str, session_id: str | None = None) -> str:
     """Open panel in iTerm2 vertical split (macOS)."""
     session_flag = f" --session {session_id}" if session_id else ""
     if project_dir:
-        cmd = f"cd '{project_dir}' && uv run claude-panel{session_flag}"
+        cmd = f"cd '{project_dir}' && uv run claude-panel{session_flag}; exit"
     else:
-        cmd = f"claude-panel{session_flag}"
+        cmd = f"claude-panel{session_flag}; exit"
     script = _OPEN_APPLESCRIPT.format(cmd=cmd)
     try:
         subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
@@ -668,9 +668,9 @@ def _open_wsl(project_dir: str, session_id: str | None = None) -> str:
     distro = os.environ.get("WSL_DISTRO_NAME", "Ubuntu")
     session_flag = f" --session {session_id}" if session_id else ""
     if project_dir:
-        cmd = f"cd '{project_dir}' && uv run claude-panel{session_flag}"
+        cmd = f"cd '{project_dir}' && uv run claude-panel{session_flag}; exit"
     else:
-        cmd = f"claude-panel{session_flag}"
+        cmd = f"claude-panel{session_flag}; exit"
     try:
         subprocess.run(
             [
