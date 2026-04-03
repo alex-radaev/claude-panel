@@ -15,6 +15,7 @@ from rich.panel import Panel as RichPanel
 from rich.table import Table
 from rich.columns import Columns
 from rich.syntax import Syntax
+from textual import events
 from textual.app import App, ComposeResult
 from textual.containers import VerticalScroll
 from textual.message import Message
@@ -545,7 +546,7 @@ class PanelViewer(App):
 
     # ── Key handling ──
 
-    def on_key(self, event: any) -> None:
+    def on_key(self, event: events.Key) -> None:
         """Intercept up/down to cycle screensavers when on a screensaver screen."""
         if event.key in ("up", "down"):
             screen_data = self._screens.get(self._active_screen)
@@ -629,6 +630,7 @@ class PanelViewer(App):
             with open(fd, "w") as f:
                 json.dump(state, f)
             os.rename(tmp, str(state_file))
+            self.run_worker(self._render_active_screen(), exclusive=True)
         except (json.JSONDecodeError, OSError, KeyError):
             pass
 
