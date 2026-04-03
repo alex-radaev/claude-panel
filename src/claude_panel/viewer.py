@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import tempfile
 import time
 import webbrowser
 from typing import Any
@@ -165,8 +167,6 @@ class PanelViewer(App):
         ("c", "clear", "Clear"),
         ("left", "prev_screen", "Prev"),
         ("right", "next_screen", "Next"),
-        ("up", "prev_screensaver", "Prev Screensaver"),
-        ("down", "next_screensaver", "Next Screensaver"),
     ]
 
     SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -520,6 +520,17 @@ class PanelViewer(App):
         if event.href.startswith(("http://", "https://")):
             webbrowser.open(event.href)
 
+    # ── Key handling ──
+
+    def on_key(self, event: any) -> None:
+        """Intercept up/down to cycle screensavers when on a screensaver screen."""
+        if event.key in ("up", "down"):
+            screen_data = self._screens.get(self._active_screen)
+            if screen_data and screen_data.get("type") == "screensaver":
+                self._cycle_screensaver(-1 if event.key == "up" else 1)
+                event.prevent_default()
+                event.stop()
+
     # ── Screen navigation (keyboard + mouse) ──
 
     async def on_screen_bar_screen_clicked(self, event: ScreenBar.ScreenClicked) -> None:
@@ -589,22 +600,14 @@ class PanelViewer(App):
                 "name": new_name,
                 "code": path.read_text(),
             }
+            state["active"] = self._active_screen
             state["ts"] = time.time()
-            import tempfile, os
             fd, tmp = tempfile.mkstemp(dir=str(state_file.parent), suffix=".tmp")
             with open(fd, "w") as f:
                 json.dump(state, f)
             os.rename(tmp, str(state_file))
         except (json.JSONDecodeError, OSError, KeyError):
             pass
-
-    async def action_prev_screensaver(self) -> None:
-        """Switch to previous screensaver."""
-        self._cycle_screensaver(-1)
-
-    async def action_next_screensaver(self) -> None:
-        """Switch to next screensaver."""
-        self._cycle_screensaver(1)
 
     async def action_clear(self) -> None:
         """Clear the panel (active session or global)."""
