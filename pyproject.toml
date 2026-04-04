@@ -13,6 +13,18 @@ dependencies = [
 claude-panel-server = "claude_panel.server:main"
 claude-panel = "claude_panel.viewer:main"
 
+[dependency-groups]
+test = [
+    "pytest>=9.0",
+    "pytest-asyncio>=0.25",
+    "pytest-cov>=7.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = ["-p", "no:warnings", "--cov=claude_panel", "--cov-report=term-missing"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
