@@ -176,6 +176,7 @@ class PanelViewer(App):
     current_mode: reactive[str] = reactive("waiting")
     _canvas_counter: int = 0
     _stop_screensaver: bool = False
+    _screensaver_generation: int = 0
 
     # Multi-screen state
     _screens: dict[str, Any] = {}
@@ -478,9 +479,10 @@ class PanelViewer(App):
         await content.mount(canvas)
 
         self.query_one("#status-bar", Static).update(f"Screensaver: {name}")
-        self.run_worker(self._execute_screensaver_loop(canvas, code), exclusive=True)
+        self._screensaver_generation += 1
+        self.run_worker(self._execute_screensaver_loop(canvas, code, self._screensaver_generation), exclusive=True)
 
-    async def _execute_screensaver_loop(self, canvas: RichLog, code: str) -> None:
+    async def _execute_screensaver_loop(self, canvas: RichLog, code: str, generation: int = 0) -> None:
         """Loop a screensaver script until interrupted."""
         term_width = self.size.width - 8
         term_height = self.size.height - 6
@@ -502,14 +504,24 @@ class PanelViewer(App):
                 wrapped += f"    {line}\n"
             exec(compile(wrapped, "<screensaver>", "exec"), namespace)
 
-            while not self._stop_screensaver:
-                canvas.clear()
-                await namespace["__script__"]()
+            while not self._stop_screensaver and self._screensaver_generation == generation:
+                try:
+                    canvas.clear()
+                    await namespace["__script__"]()
+                except (Exception,) as e:
+                    if self._screensaver_generation != generation:
+                        return  # stale worker, exit silently
+                    raise
                 await asyncio.sleep(0.1)
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            canvas.write(Text(f"\n[Error] {type(e).__name__}: {e}", style="bold red"))
+            if self._screensaver_generation != generation:
+                return  # stale worker writing to detached canvas, exit silently
+            try:
+                canvas.write(Text(f"\n[Error] {type(e).__name__}: {e}", style="bold red"))
+            except Exception:
+                pass  # canvas already removed from DOM
 
     async def _execute_script(self, canvas: RichLog, code: str) -> None:
         """Execute user script with canvas and rich library available."""
@@ -565,10 +577,10 @@ class PanelViewer(App):
         if name == self._active_screen:
             return
         self._active_screen = name
+        self._screensaver_generation += 1  # invalidate any running screensaver
         self._stop_screensaver = True
-        await asyncio.sleep(0.05)
-        self._stop_screensaver = False
         await self._render_active_screen()
+        self._stop_screensaver = False
 
     async def action_prev_screen(self) -> None:
         """Navigate to previous screen."""
@@ -577,10 +589,10 @@ class PanelViewer(App):
         idx = self._screen_order.index(self._active_screen) if self._active_screen in self._screen_order else 0
         idx = (idx - 1) % len(self._screen_order)
         self._active_screen = self._screen_order[idx]
+        self._screensaver_generation += 1
         self._stop_screensaver = True
-        await asyncio.sleep(0.05)  # let screensaver worker stop
-        self._stop_screensaver = False
         await self._render_active_screen()
+        self._stop_screensaver = False
 
     async def action_next_screen(self) -> None:
         """Navigate to next screen."""
@@ -589,10 +601,10 @@ class PanelViewer(App):
         idx = self._screen_order.index(self._active_screen) if self._active_screen in self._screen_order else 0
         idx = (idx + 1) % len(self._screen_order)
         self._active_screen = self._screen_order[idx]
+        self._screensaver_generation += 1
         self._stop_screensaver = True
-        await asyncio.sleep(0.05)
-        self._stop_screensaver = False
         await self._render_active_screen()
+        self._stop_screensaver = False
 
     def _cycle_screensaver(self, direction: int) -> None:
         """Switch the ambient screen to the next/prev screensaver."""
@@ -630,6 +642,8 @@ class PanelViewer(App):
             with open(fd, "w") as f:
                 json.dump(state, f)
             os.rename(tmp, str(state_file))
+            self._screensaver_generation += 1
+            self._stop_screensaver = True
             self.run_worker(self._render_active_screen(), exclusive=True)
         except (json.JSONDecodeError, OSError, KeyError):
             pass
