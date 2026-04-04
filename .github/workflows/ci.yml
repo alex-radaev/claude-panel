@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --group test
+
+      - name: Run tests
+        run: uv run pytest tests/ -v
+
+  version-check:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version consistency
+        run: |
+          PLUGIN_V=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
+          MARKET_V=$(python3 -c "import json; print(json.load(open('.claude-plugin/marketplace.json'))['plugins'][0]['version'])")
+          PYPROJ_V=$(python3 -c "
+          import re
+          text = open('pyproject.toml').read()
+          m = re.search(r'version\s*=\s*\"([^\"]+)\"', text)
+          print(m.group(1) if m else 'MISSING')
+          ")
+
+          echo "plugin.json:      $PLUGIN_V"
+          echo "marketplace.json: $MARKET_V"
+          echo "pyproject.toml:   $PYPROJ_V"
+
+          if [ "$PLUGIN_V" != "$MARKET_V" ] || [ "$PLUGIN_V" != "$PYPROJ_V" ]; then
+            echo ""
+            echo "::error::Version mismatch! All three files must agree."
+            echo "  plugin.json=$PLUGIN_V  marketplace.json=$MARKET_V  pyproject.toml=$PYPROJ_V"
+            exit 1
+          fi
+          echo "All versions match: $PLUGIN_V"
