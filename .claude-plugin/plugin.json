@@ -1,6 +1,6 @@
 {
   "name": "claude-panel",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Persistent 3-screen side panel for Claude Code with background AI curator. Main (free-form), status (auto-updated dashboard), ambient (screensavers).",
   "author": {
     "name": "Alex"

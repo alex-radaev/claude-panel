@@ -8,7 +8,7 @@
     {
       "name": "claude-panel",
       "description": "Persistent side panel for Claude Code sessions. Shows context screens, status dashboards, and ambient screensavers in a Textual TUI viewer.",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "source": "./",
       "category": "productivity"
     }
