@@ -34,10 +34,17 @@ from claude_panel.session import (
 # ambient is the screensaver. Custom screens go after these.
 STANDARD_ORDER = ["main", "status", "ambient"]
 
+# ── Resolve project root for uv run in subagent prompts ──
+_PROJECT_DIR = ""
+_candidate = Path(__file__).resolve().parent.parent.parent
+if (_candidate / "pyproject.toml").exists():
+    _PROJECT_DIR = str(_candidate)
+
+_UV_PYTHON = f"uv run --directory '{_PROJECT_DIR}' python3" if _PROJECT_DIR else "python3"
 
 mcp = FastMCP(
     "claude-panel",
-    instructions="""\
+    instructions=f"""\
 You have a persistent side panel with two key screens:
 
 - **MAIN** = your active working surface (you control this)
@@ -55,7 +62,7 @@ Agent(
     mode="bypassPermissions",
     run_in_background=True,
     prompt=\"\"\"Run this bash command:
-python3 -c "
+{_UV_PYTHON} -c "
 from claude_panel.curator import read_state, write_state, update_mood
 from claude_panel.session import get_session_id
 sid = get_session_id()
@@ -73,14 +80,14 @@ Agent(
     mode="bypassPermissions",
     run_in_background=True,
     prompt=\"\"\"Run this bash command:
-python3 -c "
+{_UV_PYTHON} -c "
 from claude_panel.curator import read_state, write_state, update_main
 from claude_panel.session import get_session_id
 sid = get_session_id()
 state = read_state(sid)
 state = update_main(state, [
-    {'id': 'what', 'title': '🔥 What Changed', 'content': 'description here'},
-    {'id': 'next', 'title': 'Next', 'content': '- [ ] item 1\\n- [ ] item 2'},
+    {{'id': 'what', 'title': '🔥 What Changed', 'content': 'description here'}},
+    {{'id': 'next', 'title': 'Next', 'content': '- [ ] item 1\\n- [ ] item 2'}},
 ])
 write_state(state, sid)
 "\"\"\"
