@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import tempfile
 import time
 import webbrowser
+from pathlib import Path
 from typing import Any
 
 from rich.text import Text
@@ -27,6 +29,14 @@ from claude_panel.session import CLAUDE_SESSIONS_DIR, get_active_session, sessio
 
 # Set by --session CLI arg; when set, viewer ignores the global active_session pointer
 _pinned_session_id: str | None = None
+
+_log_file = Path.home() / ".claude-panel" / "viewer.log"
+_log_file.parent.mkdir(parents=True, exist_ok=True)
+_logger = logging.getLogger("claude-panel-viewer")
+_logger.setLevel(logging.DEBUG)
+_fh = logging.FileHandler(str(_log_file))
+_fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+_logger.addHandler(_fh)
 
 
 class SectionPanel(Static):
@@ -397,6 +407,7 @@ class PanelViewer(App):
         self._stop_screensaver = False
         name = screen_data.get("name", "Screensaver")
         code = screen_data.get("code", "")
+        _logger.info("render_screensaver_inline: %s, code_len=%d", name, len(code))
 
         self._canvas_counter += 1
         canvas = RichLog(id=f"script-canvas-{self._canvas_counter}", highlight=True, markup=True)
@@ -411,7 +422,8 @@ class PanelViewer(App):
         hint.styles.margin = (0, 0)
         await container.mount(hint)
 
-        self.run_worker(self._execute_screensaver_loop(canvas, code), exclusive=True)
+        self._screensaver_generation += 1
+        self.run_worker(self._execute_screensaver_loop(canvas, code, self._screensaver_generation), exclusive=True)
 
     async def _show_waiting(self) -> None:
         """Show the waiting state."""
@@ -484,6 +496,7 @@ class PanelViewer(App):
 
     async def _execute_screensaver_loop(self, canvas: RichLog, code: str, generation: int = 0) -> None:
         """Loop a screensaver script until interrupted."""
+        _logger.info("screensaver_loop start: gen=%d, current_gen=%d", generation, self._screensaver_generation)
         term_width = self.size.width - 8
         term_height = self.size.height - 6
         namespace: dict[str, Any] = {
@@ -510,18 +523,21 @@ class PanelViewer(App):
                     await namespace["__script__"]()
                 except (Exception,) as e:
                     if self._screensaver_generation != generation:
-                        return  # stale worker, exit silently
+                        _logger.info("screensaver_loop: stale after error, exiting (gen=%d)", generation)
+                        return
                     raise
                 await asyncio.sleep(0.1)
+            _logger.info("screensaver_loop exit: gen=%d, stop=%s, current_gen=%d", generation, self._stop_screensaver, self._screensaver_generation)
         except asyncio.CancelledError:
-            pass
+            _logger.info("screensaver_loop cancelled: gen=%d", generation)
         except Exception as e:
+            _logger.error("screensaver_loop error: gen=%d, %s: %s", generation, type(e).__name__, e, exc_info=True)
             if self._screensaver_generation != generation:
-                return  # stale worker writing to detached canvas, exit silently
+                return
             try:
                 canvas.write(Text(f"\n[Error] {type(e).__name__}: {e}", style="bold red"))
             except Exception:
-                pass  # canvas already removed from DOM
+                pass
 
     async def _execute_script(self, canvas: RichLog, code: str) -> None:
         """Execute user script with canvas and rich library available."""
@@ -623,30 +639,39 @@ class PanelViewer(App):
             idx = 0
         idx = (idx + direction) % len(available)
         new_name = available[idx]
+        _logger.info("Cycling screensaver: %s -> %s (gen=%d)", current, new_name, self._screensaver_generation)
         path = resolve_screensaver(new_name)
         if not path:
             return
-        # Update state file so the poll loop picks it up
+        code = path.read_text()
+        new_screen_data = {
+            "type": "screensaver",
+            "name": new_name,
+            "code": code,
+        }
+        # Update in-memory screens FIRST so _render_active_screen uses correct data
+        self._screens[self._active_screen] = new_screen_data
+        # Persist to state file (for poll loop consistency)
         state_file = self._resolve_state_file()
         try:
             raw = state_file.read_text()
             state = json.loads(raw)
-            state["screens"][self._active_screen] = {
-                "type": "screensaver",
-                "name": new_name,
-                "code": path.read_text(),
-            }
+            state["screens"][self._active_screen] = new_screen_data
             state["active"] = self._active_screen
-            state["ts"] = time.time()
+            now = time.time()
+            state["ts"] = now
             fd, tmp = tempfile.mkstemp(dir=str(state_file.parent), suffix=".tmp")
             with open(fd, "w") as f:
                 json.dump(state, f)
             os.rename(tmp, str(state_file))
-            self._screensaver_generation += 1
-            self._stop_screensaver = True
-            self.run_worker(self._render_active_screen(), exclusive=True)
-        except (json.JSONDecodeError, OSError, KeyError):
-            pass
+            # Prevent poll loop from triggering a redundant re-render
+            self.last_ts = now
+        except (json.JSONDecodeError, OSError, KeyError) as e:
+            _logger.error("Cycling screensaver state write failed: %s", e, exc_info=True)
+        self._screensaver_generation += 1
+        self._stop_screensaver = True
+        _logger.info("Cycling: gen now %d, calling render", self._screensaver_generation)
+        self.run_worker(self._render_active_screen(), exclusive=True)
 
     async def action_clear(self) -> None:
         """Clear the panel (active session or global)."""
