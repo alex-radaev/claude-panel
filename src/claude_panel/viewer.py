@@ -255,6 +255,11 @@ class PanelViewer(App):
             state_file = self._resolve_state_file()
 
             if not state_file.exists():
+                # Don't flip to "waiting" if a screensaver is currently running —
+                # this happens during session transitions when the new session's
+                # state file hasn't been written yet.
+                if self.current_mode in ("screensaver", "multi"):
+                    return
                 if self.current_mode != "waiting":
                     await self._show_waiting()
                 return
@@ -315,19 +320,45 @@ class PanelViewer(App):
 
     async def _handle_multi_screen(self, data: dict[str, Any]) -> None:
         """Handle multi-screen mode — render the active screen."""
-        self._screens = data.get("screens", {})
-        self._screen_order = data.get("screen_order", [])
+        new_screens = data.get("screens", {})
+        new_screen_order = data.get("screen_order", [])
         new_active = data.get("active")
 
-        if not self._screen_order:
+        if not new_screen_order:
+            self._screens = new_screens
+            self._screen_order = new_screen_order
             await self._show_waiting()
             return
 
         # Determine which screen to show
-        if new_active and new_active in self._screens:
-            self._active_screen = new_active
-        elif self._active_screen not in self._screens:
-            self._active_screen = self._screen_order[0]
+        prev_active = self._active_screen
+        if new_active and new_active in new_screens:
+            resolved_active = new_active
+        elif self._active_screen not in new_screens:
+            resolved_active = new_screen_order[0]
+        else:
+            resolved_active = self._active_screen
+
+        # Check if we can skip re-rendering an active screensaver
+        # Skip if: already in multi mode, same active screen, screen is a running screensaver,
+        # and the screensaver code hasn't changed
+        if (self.current_mode == "multi"
+                and resolved_active == prev_active
+                and not self._stop_screensaver):
+            old_screen = self._screens.get(resolved_active, {})
+            new_screen = new_screens.get(resolved_active, {})
+            if (old_screen.get("type") == "screensaver"
+                    and new_screen.get("type") == "screensaver"
+                    and old_screen.get("name") == new_screen.get("name")):
+                # Screensaver unchanged — update other screens data without re-rendering
+                self._screens = new_screens
+                self._screen_order = new_screen_order
+                _logger.debug("handle_multi_screen: skipping re-render, screensaver '%s' unchanged", old_screen.get("name"))
+                return
+
+        self._screens = new_screens
+        self._screen_order = new_screen_order
+        self._active_screen = resolved_active
 
         # Stop screensaver if switching away from a screensaver screen
         screen_data = self._screens.get(self._active_screen)
@@ -400,7 +431,7 @@ class PanelViewer(App):
         canvas.styles.height = "1fr"
         await container.mount(canvas)
 
-        self.run_worker(self._execute_script(canvas, code), exclusive=True)
+        self.run_worker(self._execute_script(canvas, code), exclusive=True, group="screensaver-loop")
 
     async def _render_screensaver_inline(self, container: VerticalScroll, screen_data: dict[str, Any]) -> None:
         """Render a screensaver as an inline screen (within multi-screen mode)."""
@@ -423,7 +454,7 @@ class PanelViewer(App):
         await container.mount(hint)
 
         self._screensaver_generation += 1
-        self.run_worker(self._execute_screensaver_loop(canvas, code, self._screensaver_generation), exclusive=True)
+        self.run_worker(self._execute_screensaver_loop(canvas, code, self._screensaver_generation), exclusive=True, group="screensaver-loop")
 
     async def _show_waiting(self) -> None:
         """Show the waiting state."""
@@ -470,7 +501,7 @@ class PanelViewer(App):
         canvas.styles.height = "1fr"
         await content.mount(canvas)
 
-        self.run_worker(self._execute_script(canvas, code), exclusive=True)
+        self.run_worker(self._execute_script(canvas, code), exclusive=True, group="screensaver-loop")
 
     async def _render_screensaver(self, screensaver: dict[str, str]) -> None:
         """Render standalone screensaver mode (legacy screensaver_play)."""
@@ -492,7 +523,7 @@ class PanelViewer(App):
 
         self.query_one("#status-bar", Static).update(f"Screensaver: {name}")
         self._screensaver_generation += 1
-        self.run_worker(self._execute_screensaver_loop(canvas, code, self._screensaver_generation), exclusive=True)
+        self.run_worker(self._execute_screensaver_loop(canvas, code, self._screensaver_generation), exclusive=True, group="screensaver-loop")
 
     async def _execute_screensaver_loop(self, canvas: RichLog, code: str, generation: int = 0) -> None:
         """Loop a screensaver script until interrupted."""
@@ -516,9 +547,11 @@ class PanelViewer(App):
             for line in code.splitlines():
                 wrapped += f"    {line}\n"
             exec(compile(wrapped, "<screensaver>", "exec"), namespace)
-
             while not self._stop_screensaver and self._screensaver_generation == generation:
                 try:
+                    if not canvas.is_attached:
+                        _logger.info("screensaver_loop: canvas detached, exiting (gen=%d)", generation)
+                        return
                     canvas.clear()
                     await namespace["__script__"]()
                 except (Exception,) as e:
